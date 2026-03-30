@@ -1,4 +1,4 @@
-const axios = require(`axios`);
+import axios from "axios";
 
 const siliconDBUrl = 'https://silicondb.32-pratyushprat.repl.co'
 

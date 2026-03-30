@@ -90,7 +90,7 @@ export const fetchUrl = async (url, options) => {
 };
 
 export const WAVersion = async () => {
-  let get = await exports.fetchUrl(
+  let get = await fetchUrl(
     "https://web.whatsapp.com/check-update?version=1&platform=web"
   );
   let version = [get.currentVersion.replace(/[.]/g, ", ")];

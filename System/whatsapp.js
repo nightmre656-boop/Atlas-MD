@@ -16,7 +16,7 @@ class WAConnection {
    * @param {*} m
    */
   async serializeM(m) {
-    return exports.serialize(this, m);
+    return serialize(this, m);
   }
 
   /**

@@ -1,7 +1,6 @@
 import fs from "fs";
 import axios from "axios";
 import path from "path";
-import package from "../package.json";
 let mergedCommands = [
   "help",
   "h",
@@ -56,7 +55,7 @@ export default {
       case "menu":
         await doReact("☃️");
         await Atlas.sendPresenceUpdate("composing", m.from);
-        function readUniqueCommands(dirPath) {
+        async function readUniqueCommands(dirPath) {
           const allCommands = [];
 
           const files = fs.readdirSync(dirPath);
@@ -66,13 +65,14 @@ export default {
             const stat = fs.statSync(filePath);
 
             if (stat.isDirectory()) {
-              const subCommands = readUniqueCommands(filePath);
+              const subCommands = await readUniqueCommands(filePath);
               allCommands.push(...subCommands);
             } else if (stat.isFile() && file.endsWith(".js")) {
-              const command = require(filePath);
+              const command = await import(filePath);
+              const cmdDefault = command.default;
 
-              if (Array.isArray(command.uniquecommands)) {
-                const subArray = [file, ...command.uniquecommands];
+              if (cmdDefault && Array.isArray(cmdDefault.uniquecommands)) {
+                const subArray = [file, ...cmdDefault.uniquecommands];
                 allCommands.push(subArray);
               }
             }
@@ -100,7 +100,7 @@ export default {
 
         const pluginsDir = path.join(process.cwd(), "Plugins");
 
-        const allCommands = readUniqueCommands(pluginsDir);
+        const allCommands = await readUniqueCommands(pluginsDir);
         const formattedCommands = formatCommands(allCommands);
         var helpText = `\nKonnichiwa *${pushName}* Senpai,\n\nI am *${botName}*, a WhatsApp bot built to take your boring WhatsApp experience into next level.\n\n*🔖 My Prefix is:*  ${prefix}\n\n${formattedCommands}\n\n\n*©️ Team ATLAS- 2023*`;
         await Atlas.sendMessage(
