@@ -3,6 +3,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import ffmpegPath from 'ffmpeg-static';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -12,7 +13,7 @@ function ffmpeg(buffer, args = [], ext = '', ext2 = '') {
       let tmp = path.join(__dirname, './Cache', + new Date + '.' + ext)
       let out = tmp + '.' + ext2
       await fs.promises.writeFile(tmp, buffer)
-      spawn('ffmpeg', [
+      spawn(ffmpegPath, [
         '-y',
         '-i', tmp,
         ...args,
@@ -81,9 +82,5 @@ function toVideo(buffer, ext) {
   ], ext, 'mp4')
 }
 
-export default {
-  toAudio,
-  toPTT,
-  toVideo,
-  ffmpeg,
-} 
+export { toAudio, toPTT, toVideo, ffmpeg };
+export default { toAudio, toPTT, toVideo, ffmpeg };

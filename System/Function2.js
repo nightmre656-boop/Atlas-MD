@@ -1,5 +1,4 @@
-import baileysjs from "baileysjs";
-const { proto, delay, getContentType } = baileysjs;
+import { proto, delay, getContentType } from "@whiskeysockets/baileys";
 import chalk from "chalk";
 import fs from "fs";
 const { unlink } = fs.promises;
@@ -7,7 +6,7 @@ import axios from "axios";
 import moment from "moment-timezone";
 import { sizeFormatter } from "human-readable";
 import util from "util";
-import Jimp from "jimp";
+import { Jimp } from "jimp";
 import child_process from "child_process";
 
 export const unixTimestampSeconds = (date = new Date()) =>
@@ -188,8 +187,8 @@ export const generateProfilePicture = async (buffer) => {
   const max = jimp.getHeight();
   const cropped = jimp.crop(0, 0, min, max);
   return {
-    img: await cropped.scaleToFit(720, 720).getBufferAsync(Jimp.MIME_JPEG),
-    preview: await cropped.scaleToFit(720, 720).getBufferAsync(Jimp.MIME_JPEG),
+    img: await cropped.scaleToFit({ w: 720, h: 720 }).getBuffer("image/jpeg"),
+    preview: await cropped.scaleToFit({ w: 720, h: 720 }).getBuffer("image/jpeg"),
   };
 };
 

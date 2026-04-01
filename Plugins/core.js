@@ -1,6 +1,7 @@
 import fs from "fs";
 import axios from "axios";
 import path from "path";
+import { pathToFileURL } from "url";
 let mergedCommands = [
   "help",
   "h",
@@ -68,7 +69,7 @@ export default {
               const subCommands = await readUniqueCommands(filePath);
               allCommands.push(...subCommands);
             } else if (stat.isFile() && file.endsWith(".js")) {
-              const command = await import(filePath);
+              const command = await import(pathToFileURL(filePath).href);
               const cmdDefault = command.default;
 
               if (cmdDefault && Array.isArray(cmdDefault.uniquecommands)) {

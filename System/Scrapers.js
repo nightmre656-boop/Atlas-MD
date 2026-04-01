@@ -1,5 +1,6 @@
 import axios from 'axios';
-import cheerio from 'cheerio';
+import { load as cheerioLoad } from 'cheerio';
+const cheerio = { load: cheerioLoad };
 
 async function pinterest(querry) {
   const { data } = await axios.get(
@@ -182,13 +183,5 @@ async function styletext(teks) {
   return fetchedresult;
 }
 
-export default {
-  pinterest,
-  wallpaper,
-  wikimedia,
-  quotesAnime,
-  aiovideodl,
-  umma,
-  ringtone,
-  styletext,
-};
+export { pinterest, wallpaper, wikimedia, quotesAnime, aiovideodl, umma, ringtone, styletext };
+export default { pinterest, wallpaper, wikimedia, quotesAnime, aiovideodl, umma, ringtone, styletext };

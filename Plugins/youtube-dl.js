@@ -2,6 +2,8 @@ import YT from "../System/Ytdl-Core.js";
 import fs from "fs";
 import yts from "youtube-yts";
 import ffmpeg from "fluent-ffmpeg";
+import ffmpegPath from "ffmpeg-static";
+ffmpeg.setFfmpegPath(ffmpegPath);
 import { getBuffer } from "../System/Function2.js";
 
 let mergedCommands = [

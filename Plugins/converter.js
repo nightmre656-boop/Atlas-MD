@@ -3,6 +3,7 @@ import { webp2mp4File } from "../System/Uploader.js";
 import { toAudio } from "../System/File-Converter.js";
 import { exec } from "child_process";
 import fs from "fs";
+import ffmpegPath from "ffmpeg-static";
 import PDFDocument from "pdfkit";
 import { GraphOrg } from "../System/Uploader.js";
 import { getBuffer } from "../System/Function2.js";
@@ -53,7 +54,7 @@ export default {
         await doReact("🎴");
         let mediaMess = await Atlas.downloadAndSaveMediaMessage(quoted);
         let ran = await getRandom(".png");
-        exec(`ffmpeg -i ${mediaMess} ${ran}`, (err) => {
+        exec(`"${ffmpegPath}" -i ${mediaMess} ${ran}`, (err) => {
           fs.unlinkSync(mediaMess);
           if (err) {
             Atlas.sendMessage(

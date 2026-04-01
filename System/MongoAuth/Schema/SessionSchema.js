@@ -6,8 +6,14 @@ const schema = new Schema({
     required: true,
     unique: true,
   },
-
-  session: String,
+  files: {
+    type: Schema.Types.Mixed,
+    default: {},
+  },
+  lastSync: {
+    type: Date,
+    default: null,
+  },
 });
 
 export default model("sessionschemas", schema);

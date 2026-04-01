@@ -1,5 +1,5 @@
 import fs from "fs";
-import Jimp from "jimp";
+import { Jimp } from "jimp";
 import moment from "moment-timezone";
 import {
   setWelcome,
@@ -747,7 +747,7 @@ async function generatePP(buffer) {
   const max = jimp.getHeight();
   const cropped = jimp.crop(0, 0, min, max);
   return {
-    img: await cropped.scaleToFit(720, 720).getBufferAsync(Jimp.MIME_JPEG),
-    preview: await cropped.normalize().getBufferAsync(Jimp.MIME_JPEG),
+    img: await cropped.scaleToFit({ w: 720, h: 720 }).getBuffer("image/jpeg"),
+    preview: await cropped.normalize().getBuffer("image/jpeg"),
   };
 }

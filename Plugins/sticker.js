@@ -2,7 +2,7 @@ import fs from "fs";
 import fetch from "node-fetch";
 import axios from "axios";
 import { Sticker, StickerTypes } from "wa-sticker-formatter";
-import { TelegraPh } from "../System/Uploader.js";
+import { GraphOrg as TelegraPh } from "../System/Uploader.js";
 import {   fetchJson,   getBuffer,   GIFBufferToVideoBuffer, } from "../System/Function2.js";
 let mergedCommands = [
   "sticker",

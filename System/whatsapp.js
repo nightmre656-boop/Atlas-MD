@@ -1,7 +1,6 @@
-import baileysjs from "baileysjs";
-const { extensionForMediaMessage, extractMessageContent, jidNormalizedUser, getContentType, normalizeMessageContent, proto, delay, downloadContentFromMessage, getBinaryNodeChild } = baileysjs;
+import { extensionForMediaMessage, extractMessageContent, jidNormalizedUser, getContentType, normalizeMessageContent, proto, delay, downloadContentFromMessage, getBinaryNodeChild } from "@whiskeysockets/baileys";
 import fs from "fs";
-import FileType from "file-type";
+import { fileTypeFromBuffer } from "file-type";
 import { getRandom, fetchBuffer } from "./Function.js";
 
 class WAConnection {
@@ -49,7 +48,7 @@ class WAConnection {
     }
 
     if (fileName) {
-      let ftype = await FileType.fromBuffer(buffer);
+      let ftype = await fileTypeFromBuffer(buffer);
       let trueFileName = fileName
         ? fileName + "." + ftype.ext || mimetype.split("/")[1]
         : getRandom(ftype.ext || mimetype.split("/")[1]);
@@ -77,7 +76,7 @@ class WAConnection {
     for await (const chunk of stream) {
       buffer = Buffer.concat([buffer, chunk]);
     }
-    let type = await FileType.fromBuffer(buffer);
+    let type = await fileTypeFromBuffer(buffer);
     let trueFileName = attachExtension ? filename + "." + type.ext : filename;
     // save to file
     await fs.writeFileSync(trueFileName, buffer);

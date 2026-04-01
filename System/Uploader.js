@@ -1,9 +1,10 @@
 import axios from 'axios';
 import BodyForm from 'form-data';
-import { fromBuffer } from 'file-type';
+import { fileTypeFromBuffer } from 'file-type';
 import fetch from 'node-fetch';
 import fs from 'fs';
-import cheerio from 'cheerio';
+import { load as cheerioLoad } from 'cheerio';
+const cheerio = { load: cheerioLoad };
 
 async function GraphOrg(Path) {
   if (!fs.existsSync(Path)) throw new Error("File not Found");
@@ -63,4 +64,5 @@ async function webp2mp4File(path) {
   return { status: true, message: "Created By MRHRTZ", result };
 }
 
+export { GraphOrg, UploadFileUgu, webp2mp4File };
 export default { GraphOrg, UploadFileUgu, webp2mp4File };

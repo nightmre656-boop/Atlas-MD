@@ -5,5 +5,8 @@ Test
 quickdb.json
 System/Cache/*
 !System/Cache/.gitkeep
+System/session/
+session_*/
 .claude
 readmes
+package-lock.json
