@@ -56,7 +56,7 @@ export default class Authenication {
               let value = keys[key]?.[id];
               if (value) {
                 if (type === "app-state-sync-key") {
-                  value = proto.AppStateSyncKeyData.fromObject(value);
+                  value = proto.AppStateSyncKeyData.create(value);
                 }
 
                 dict[id] = value;

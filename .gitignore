@@ -5,3 +5,5 @@ Test
 quickdb.json
 System/Cache/*
 !System/Cache/.gitkeep
+.claude
+readmes

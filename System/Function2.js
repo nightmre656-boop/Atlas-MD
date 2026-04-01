@@ -323,7 +323,7 @@ export const smsg = (conn, m, store) => {
         let q = await store.loadMessage(m.chat, m.quoted.id, conn);
         return smsg(conn, q, store);
       };
-      let vM = (m.quoted.fakeObj = M.fromObject({
+      let vM = (m.quoted.fakeObj = M.create({
         key: {
           remoteJid: m.quoted.chat,
           fromMe: m.quoted.fromMe,
@@ -379,7 +379,7 @@ export const smsg = (conn, m, store) => {
   /**
    * Copy this message
    */
-  m.copy = () => smsg(conn, M.fromObject(M.toObject(m)));
+  m.copy = () => smsg(conn, M.create(M.toObject(m)));
 
   /**
    *

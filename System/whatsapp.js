@@ -89,7 +89,7 @@ export { WAConnection };
 export const serialize = (Atlas, m, options = {}) => {
   if (!m) return m;
   let M = proto.WebMessageInfo;
-  m = M.fromObject(m);
+  m = M.create(m);
   if (m.key) {
     m.from = jidNormalizedUser(m.key.remoteJid || m.key.participant);
     m.fromMe = m.key.fromMe;
@@ -127,7 +127,7 @@ export const serialize = (Atlas, m, options = {}) => {
         m.quoted.msg?.selectedDisplayText ||
         m.quoted.msg?.title ||
         "";
-      let vM = (m.quoted.fakeObj = M.fromObject({
+      let vM = (m.quoted.fakeObj = M.create({
         key: {
           remoteJid: m.quoted.from,
           fromMe: m.quoted.fromMe,
