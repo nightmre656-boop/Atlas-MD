@@ -60,7 +60,7 @@ export default {
             Atlas.sendMessage(
               m.from,
               {
-                text: `Please mention a *Non-animated* sticker to process ! \n\nOr use *${prefix}togif* / *${prefix}tomp4*  to process *Animated* sticker !`,
+                text: `Please mention a *Non-animated* sticker to process ! \n\nOr use *${prefix}togif* / *${prefix}tomp4* to process *Animated* sticker !`,
               },
               { quoted: m }
             );
@@ -87,6 +87,13 @@ export default {
         let mediaMess2 = await Atlas.downloadAndSaveMediaMessage(quoted);
         let webpToMp4 = await webp2mp4File(mediaMess2);
 
+        // Validation to prevent crash if result is null
+        if (!webpToMp4 || !webpToMp4.result) {
+            fs.unlinkSync(mediaMess2);
+            await doReact("❌");
+            return m.reply("❌ Error: Failed to convert sticker to video. The server might be down or the file is too large.");
+        }
+
         await Atlas.sendMessage(
           m.from,
           {
@@ -109,6 +116,13 @@ export default {
         let mediaMess3 = await Atlas.downloadAndSaveMediaMessage(quoted);
         let webpToMp42 = await webp2mp4File(mediaMess3);
 
+        // Validation to prevent crash if result is null
+        if (!webpToMp42 || !webpToMp42.result) {
+            fs.unlinkSync(mediaMess3);
+            await doReact("❌");
+            return m.reply("❌ Error: Failed to convert sticker to GIF. Please try again later.");
+        }
+
         await Atlas.sendMessage(
           m.from,
           {
@@ -119,7 +133,6 @@ export default {
           { quoted: m }
         );
         fs.unlinkSync(mediaMess3);
-
         break;
 
       case "tomp3":
@@ -236,7 +249,7 @@ export default {
 
               const imageFilePath = mediaMess4.replace(/\\/g, "/");
               doc.image(imageFilePath, 0, 0, {
-                width: 612, // It will make your image to horizontally fill the page - Change it as per your requirement
+                width: 612, // Standard width for filling page
                 align: "center",
                 valign: "center",
               });
@@ -307,4 +320,4 @@ export default {
         break;
     }
   },
-};
+}; 

@@ -1,289 +1,181 @@
-import YT from "../System/Ytdl-Core.js";
-import fs from "fs";
-import yts from "youtube-yts";
-import ffmpeg from "fluent-ffmpeg";
-import ffmpegPath from "ffmpeg-static";
-ffmpeg.setFfmpegPath(ffmpegPath);
-import { getBuffer } from "../System/Function2.js";
+import axios from "axios";
 
 let mergedCommands = [
   "play",
   "song",
+  "yt",
   "ytmp3",
   "mp3",
-  "ytaudio",
-  "yta",
   "ytmp4",
-  "mp4",
-  "ytvideo",
-  "ytv",
   "video",
+  "mp4",
+  "video",
+  "ytsearch",
+  "yts"
 ];
 
+const YT_REGEX = /^(https?:\/\/)?((www|m|music)\.)?(youtube(-nocookie)?\.com\/(watch\?v=|shorts\/|live\/)|youtu\.be\/)[\w-]+(\S+)?$/i;
+
+const extractUrl = (text) => {
+  if (!text) return null;
+  const match = text.match(YT_REGEX);
+  return match ? match[0] : null;
+};
+
 export default {
-  name: "mediaDownloader",
+  name: "youtube",
   alias: [...mergedCommands],
-  uniquecommands: ["song", "video", "ytmp3", "ytmp4"],
-  description: "All file dowloader commands",
-  start: async (Atlas, m, { inputCMD, text, doReact, prefix, pushName }) => {
-    switch (inputCMD) {
-      case "play":
-      case "song":
-        if (!text) {
-          await doReact("❌");
-          return m.reply(
-            `Please provide a song name !\n\nExample: *${prefix}song despacito*`
-          );
-        }
-        await doReact("📥");
-        const thumbAtlas = "https://graph.org/file/d0a287fa875c809f234ce.jpg";
-        const songInfo = await yts(text);
-        const song = songInfo.videos[0];
-        const videoUrl = song.url;
-        const videoId = videoUrl.split("v=")[1];
+  uniquecommands: ["play", "mp3", "mp4", "ytsearch"],
+  description: "Advanced YouTube system (API based)",
 
-        await Atlas.sendMessage(
-          m.from,
-          {
-            image: { url: song.thumbnail },
-            caption: `\nDownloading: *${song.title}*
+  start: async (Atlas, m, { inputCMD, text, doReact, prefix }) => {
+    const botName = global.botName || "ATLAS";
+    let query = text?.trim();
 
-_🕛 Duration:_ *${song.timestamp}*
+    if (!query && m.quoted?.text) {
+      query = m.quoted.text.trim();
+    }
 
-_🎀 Channel Name:_ *${song.author.name}*
+    if (!query) {
+      return m.reply(`🎬 *YouTube Downloader*
 
-_🏮 Video Uploaded:_ *${song.ago}*\n`,
-          },
-          { quoted: m }
-        );
+📌 *Usage:*
+• ${prefix}play <song name>
+• ${prefix}mp3 <youtube link>
+• ${prefix}video <video name>
+• ${prefix}mp4 <youtube link>
+• ${prefix}ytsearch <query>
 
-        YT.mp3(videoId)
-          .then((file) => {
-            const inputPath = file.path;
-            const outputPath = inputPath + ".opus";
+✨ Reply to link also works`);
+    }
 
-            ffmpeg(inputPath)
-              .format("opus")
-              .on("error", (err) => {
-                console.error("Error converting to opus:", err);
-              })
-              .on("end", async () => {
-                await Atlas.sendPresenceUpdate("recording", m.from);
+    try {
+        
+      if (inputCMD === "ytsearch" || inputCMD === "yts") {
+        await doReact("🔍");
 
-                Atlas.sendMessage(
-                  m.from,
-                  {
-                    audio: fs.readFileSync(outputPath),
-                    mimetype: "audio/mpeg",
-                    ptt: true,
-                  },
-                  { quoted: m }
-                );
+        const res = await axios.get(`https://api-faa.my.id/faa/youtube?q=${encodeURIComponent(query)}`);
+        const data = res.data;
 
-                fs.unlinkSync(inputPath);
-                fs.unlinkSync(outputPath);
-              })
-              .save(outputPath);
-          })
-          .catch((err) => {
-            console.error("[ ATLAS ] YT mp3 download error:", err.message);
-            m.reply(`Failed to download audio: ${err.message}`);
-          });
-
-        break;
-
-      case "ytmp3":
-      case "mp3":
-      case "ytaudio":
-        if (
-          !text ||
-          (!text.includes("youtube.com/watch?v=") &&
-            !text.includes("youtu.be/"))
-        ) {
-          await doReact("❌");
-          return m.reply(
-            `Please provide a valid YouTube Video link to download as audio!\n\nExample: *${prefix}mp3 put_link*`
-          );
-        }
-        await doReact("📥");
-        {
-          const songInfo2 = await yts(text);
-          const song2 = songInfo2.videos[0];
-          const videoUrl2 = song2.url;
-          const videoId2 = videoUrl2.split("v=")[1];
-
-          await Atlas.sendMessage(
-            m.from,
-            {
-              image: { url: song2.thumbnail },
-              caption: `\nDownloading: *${song2.title}*
-
-_🕛 Duration:_ *${song2.timestamp}*
-
-_🎀 Channel Name:_ *${song2.author.name}*
-
-_🏮 Video Uploaded:_ *${song2.ago}*\n`,
-            },
-            { quoted: m }
-          );
-
-          YT.mp3(videoId2)
-            .then((file) => {
-              const inputPath = file.path;
-              const outputPath = inputPath + ".opus";
-
-              ffmpeg(inputPath)
-                .format("opus")
-                .on("error", (err) => {
-                  console.error("Error converting to opus:", err);
-                })
-                .on("end", async () => {
-                  await Atlas.sendPresenceUpdate("recording", m.from);
-
-                  Atlas.sendMessage(
-                    m.from,
-                    {
-                      audio: fs.readFileSync(inputPath),
-                      mimetype: "audio/mpeg",
-                      ptt: true,
-                    },
-                    { quoted: m }
-                  );
-
-                  fs.unlinkSync(inputPath);
-                  fs.unlinkSync(outputPath);
-                })
-                .save(outputPath);
-            })
-            .catch((err) => {
-              console.error("[ ATLAS ] YT mp3 download error:", err.message);
-              m.reply(`Failed to download audio: ${err.message}`);
-            });
+        if (!data.status || !data.result.length) {
+          return m.reply("❌ No results found");
         }
 
-        break;
+        let txt = `🔍 *YouTube Search Results*\n\n`;
+        data.result.slice(0, 10).forEach((v, i) => {
+          txt += `*${i + 1}.* ${v.title}\n⏱ ${v.duration} | 📺 ${v.channel}\n🔗 ${v.link}\n\n`;
+        });
 
-      case "ytmp4":
-      case "mp4":
-      case "ytvideo":
-        if (
-          !text ||
-          (!text.includes("youtube.com/watch?v=") &&
-            !text.includes("youtu.be/"))
-        ) {
-          await doReact("❌");
-          return m.reply(
-            `Please provide a valid YouTube Video link to download as audio!\n\nExample: *${prefix}mp4 put_link*`
-          );
-        }
-        await doReact("📥");
-        {
-          const songInfo3 = await yts(text);
-          const song3 = songInfo3.videos[0];
-          const videoUrl3 = song3.url;
+        return Atlas.sendMessage(m.from, {
+          image: { url: data.result[0].imageUrl },
+          caption: txt
+        }, { quoted: m });
+      }
 
-          await Atlas.sendMessage(
-            m.from,
-            {
-              image: { url: song3.thumbnail },
-              caption: `\nDownloading: *${song3.title}*
+if (inputCMD === "mp4" || inputCMD === "ytmp4" || inputCMD === "video") {
+  await doReact("🎥");
 
-_🕛 Duration:_ *${song3.timestamp}*
+  let url = extractUrl(query);
+  if (!url) {
+    const search = await axios.get(`https://api-faa.my.id/faa/youtube?q=${encodeURIComponent(query)}`);
+    if (!search.data.status || !search.data.result.length) {
+      return m.reply("❌ No video found");
+    }
 
-_🎀 Channel Name:_ *${song3.author.name}*
+    url = search.data.result[0].link;
 
-_🏮 Video Uploaded:_ *${song3.ago}*\n`,
-            },
-            { quoted: m }
-          );
+    await Atlas.sendMessage(m.from, {
+      image: { url: search.data.result[0].imageUrl },
+      caption: `🎬 *${search.data.result[0].title}*\n⏱ ${search.data.result[0].duration}\n\n⬇️ Downloading...`
+    }, { quoted: m });
+  }
 
-          const ytaud3 = await YT.mp4(videoUrl3);
-          Atlas.sendMessage(
-            m.from,
-            {
-              video: { url: ytaud3.videoUrl },
-              caption: `${song3.title} By: *${botName}*`,
-            },
-            { quoted: m }
-          );
-        }
+  const res = await axios.get(`https://api-faa.my.id/faa/ytmp4?url=${encodeURIComponent(url)}`);
+  const data = res.data;
 
-        break;
+  if (!data.status) throw new Error("API failed");
 
-      case "video":
-        if (!text) {
-          await doReact("❌");
-          return m.reply(
-            `Please provide an YouTube video name !\n\nExample: *${prefix}video dandilions*`
-          );
-        }
-        await doReact("📥");
-        {
-          const songInfo4 = await yts(text);
-          const song4 = songInfo4.videos[0];
-          const videoUrl4 = song4.url;
+  await Atlas.sendMessage(m.from, {
+    video: { url: data.result.download_url },
+    mimetype: "video/mp4",
+    caption: `🎬 *Video Downloaded*\n\n> Powered by ${botName}`
+  }, { quoted: m });
 
-          await Atlas.sendMessage(
-            m.from,
-            {
-              image: { url: song4.thumbnail },
-              caption: `\nDownloading: *${song4.title}*
+  await doReact("✅");
+}
 
-_🕛 Duration:_ *${song4.timestamp}*
+      if (
+        inputCMD === "mp3" ||
+        inputCMD === "ytmp3" ||
+        extractUrl(query)
+      ) {
+        await doReact("🎶");
 
-_🎀 Channel Name:_ *${song4.author.name}*
+        const url = extractUrl(query);
+        if (!url) return m.reply("❌ Invalid YouTube link");
 
-_🏮 Video Uploaded:_ *${song4.ago}*\n`,
-            },
-            { quoted: m }
-          );
+        const res = await axios.get(`https://api-faa.my.id/faa/ytmp3?url=${encodeURIComponent(url)}`);
+        const data = res.data;
 
-          const ytaud2 = await YT.mp4(videoUrl4);
-          Atlas.sendMessage(
-            m.from,
-            {
-              video: { url: ytaud2.videoUrl },
-              caption: `${song4.title} By: *${botName}*`,
-            },
-            { quoted: m }
-          );
-        }
+        if (!data.status) throw new Error("API failed");
 
-        break;
+        const { title, thumbnail, mp3 } = data.result;
 
-      case "yts":
-      case "ytsearch":
-        if (!args[0]) {
-          await doReact("❌");
-          return m.reply(`Please provide a search term!`);
-        }
-        await doReact("📥");
-        {
-          const search = await yts(text);
-          const thumbnail = search.all[0].thumbnail;
-          let num = 1;
-
-          let txt = `*🏮 YouTube Search Engine 🏮*\n\n_🧩 Search Term:_ *${args.join(
-            " "
-          )}*\n\n*📌 Total Results:* *${search.all.length}*\n`;
-
-          for (let i of search.all) {
-            txt += `\n_Result:_ *${num++}*\n_🎀 Title:_ *${
-              i.title
-            }*\n_🔶 Duration:_ *${i.timestamp}*\n_🔷 Link:_ ${i.url}\n\n`;
+        await Atlas.sendMessage(m.from, {
+          audio: { url: mp3 },
+          mimetype: "audio/mpeg",
+          contextInfo: {
+            externalAdReply: {
+              title: title,
+              body: "🎧 YouTube Audio",
+              thumbnailUrl: thumbnail,
+              mediaType: 2,
+              renderLargerThumbnail: true
+            }
           }
+        }, { quoted: m });
 
-          const buttonMessage = {
-            image: { url: thumbnail },
-            caption: txt,
-          };
+        return;
+      }
 
-          Atlas.sendMessage(m.from, buttonMessage, { quoted: m });
-        }
-        break;
+      if (inputCMD === "play" || inputCMD === "song" || inputCMD === "yt") {
+        await doReact("📥");
 
-      default:
-        break;
+        const res = await axios.get(`https://api-faa.my.id/faa/ytplay?query=${encodeURIComponent(query)}`);
+        const data = res.data;
+
+        if (!data.status) throw new Error("API failed");
+
+        const { title, author, thumbnail, mp3 } = data.result;
+
+        await Atlas.sendMessage(m.from, {
+          image: { url: thumbnail },
+          caption: `🎶 *${title}*
+👤 ${author}
+
+⬇️ Downloading...`
+        }, { quoted: m });
+
+        await Atlas.sendMessage(m.from, {
+          audio: { url: mp3 },
+          mimetype: "audio/mpeg",
+          contextInfo: {
+            externalAdReply: {
+              title: title,
+              body: author,
+              thumbnailUrl: thumbnail,
+              mediaType: 2,
+              renderLargerThumbnail: true
+            }
+          }
+        }, { quoted: m });
+
+        return;
+      }
+
+    } catch (err) {
+      console.error(err);
+      m.reply(`❌ Error: ${err.message}`);
     }
   },
 };

@@ -39,17 +39,23 @@ async function webp2mp4File(path) {
   const form = new BodyForm();
   form.append("new-image-url", "");
   form.append("new-image", fs.createReadStream(path));
+  
   const { data: firstData } = await axios({
     method: "post",
-    url: "https://s6.ezgif.com/webp-to-mp4",
+    url: "https://ezgif.com/webp-to-mp4",
     data: form,
     headers: { "Content-Type": `multipart/form-data; boundary=${form._boundary}` },
   });
+
   const $ = cheerio.load(firstData);
   const file = $('input[name="file"]').attr("value");
+  
+  if (!file) return { status: false, message: "Upload failed", result: null };
+
   const bodyFormThen = new BodyForm();
   bodyFormThen.append("file", file);
   bodyFormThen.append("convert", "Convert WebP to MP4!");
+
   const { data: secondData } = await axios({
     method: "post",
     url: "https://ezgif.com/webp-to-mp4/" + file,
@@ -58,11 +64,15 @@ async function webp2mp4File(path) {
       "Content-Type": `multipart/form-data; boundary=${bodyFormThen._boundary}`,
     },
   });
+
   const $2 = cheerio.load(secondData);
-  const result =
-    "https:" + $2("div#output > p.outfile > video > source").attr("src");
+  const resultRaw = $2("div#output > p.outfile > video > source").attr("src");
+  
+  if (!resultRaw) return { status: false, message: "Conversion failed", result: null };
+
+  const result = resultRaw.startsWith("http") ? resultRaw : "https:" + resultRaw;
   return { status: true, message: "Created By MRHRTZ", result };
 }
 
 export { GraphOrg, UploadFileUgu, webp2mp4File };
-export default { GraphOrg, UploadFileUgu, webp2mp4File };
+export default { GraphOrg, UploadFileUgu, webp2mp4File }; 

@@ -34,6 +34,10 @@ import qrcode from "qrcode";
 import qrcodeTerminal from "qrcode-terminal";
 import { getPluginURLs } from "./System/MongoDB/MongoDb_Core.js";
 import chalk from "chalk";
+import readline from "readline";
+
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const question = (text) => new Promise((resolve) => rl.question(text, resolve));
 
 // Minimal in-memory store — makeInMemoryStore was removed in Baileys v7
 const store = {
@@ -97,16 +101,53 @@ const startAtlas = async () => {
   );
   console.log(`\n`);
 
+  // --- PAIRING SYSTEM INTEGRATION ---
+  let usePairingCode = false;
+  let phoneNumber = "";
+
+  const isSessionExists = state && state.creds && state.creds.me && state.creds.me.id;
+
+  if (!isSessionExists) {
+      console.log(chalk.yellow.bold("\n--- 🔒 LOGIN CONFIGURATION ---"));
+      console.log(chalk.white("1. Scan QR Code"));
+      console.log(chalk.white("2. Use Pairing Code"));
+      
+      let choice = await question(chalk.greenBright("\nEnter option (1 or 2): "));
+
+      if (choice.trim() === '2') {
+          usePairingCode = true;
+          phoneNumber = await question(chalk.greenBright("Enter your WhatsApp Number (e.g. 918888888888): "));
+          phoneNumber = phoneNumber.replace(/[^0-9]/g, ""); 
+          console.log(chalk.magenta(`\nRequesting Pairing Code for: ${phoneNumber}...`));
+      }
+  }
+  // ----------------------------------
+
   await installPlugin();
 
   const { version, isLatest } = await fetchLatestBaileysVersion();
 
   const Atlas = makeWASocket({
     logger: pino({ level: "silent" }),
-    browser: ["Atlas", "Safari", "1.0.0"],
+    //printQRInTerminal: !usePairingCode,
+    browser: usePairingCode ? ['Ubuntu', 'Chrome', '20.0.04'] : ["Atlas", "Safari", "1.0.0"],
     auth: state,
     version,
   });
+
+  // --- REQUEST PAIRING CODE LOGIC ---
+  if (usePairingCode && !isSessionExists) {
+    setTimeout(async () => {
+        try {
+            let code = await Atlas.requestPairingCode(phoneNumber);
+            code = code?.match(/.{1,4}/g)?.join("-") || code;
+            console.log(chalk.black.bgGreen(`\n YOUR PAIRING CODE: `), chalk.black.bgWhite(` ${code} `));
+        } catch (err) {
+            console.log(chalk.red("Error fetching pairing code: " + err.message));
+        }
+    }, 3000);
+  }
+  // ----------------------------------
 
   store.bind(Atlas.ev);
 
@@ -213,7 +254,7 @@ const startAtlas = async () => {
         );
       }
     }
-    if (qr) {
+    if (qr && !usePairingCode) {
       QR_GENERATE = qr;
       qrcodeTerminal.generate(qr, { small: true });
     }
@@ -498,4 +539,4 @@ app.get("/qr", async (req, res) => {
   res.send(await qrcode.toBuffer(QR_GENERATE));
 });
 
-app.listen(PORT);
+app.listen(PORT);  
