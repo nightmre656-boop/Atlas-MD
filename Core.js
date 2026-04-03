@@ -27,42 +27,53 @@ export default async (Atlas, m, commands, chatUpdate) => {
       type == "buttonsResponseMessage"
         ? m.message[type].selectedButtonId
         : type == "listResponseMessage"
-        ? m.message[type].singleSelectReply.selectedRowId
-        : type == "templateButtonReplyMessage"
-        ? m.message[type].selectedId
-        : m.text;
+          ? m.message[type].singleSelectReply.selectedRowId
+          : type == "templateButtonReplyMessage"
+            ? m.message[type].selectedId
+            : m.text;
     let response =
       type === "conversation" && body?.startsWith(prefix)
         ? body
         : (type === "imageMessage" || type === "videoMessage") &&
           body &&
           body?.startsWith(prefix)
-        ? body
-        : type === "extendedTextMessage" && body?.startsWith(prefix)
-        ? body
-        : type === "buttonsResponseMessage" && body?.startsWith(prefix)
-        ? body
-        : type === "listResponseMessage" && body?.startsWith(prefix)
-        ? body
-        : type === "templateButtonReplyMessage" && body?.startsWith(prefix)
-        ? body
-        : "";
+          ? body
+          : type === "extendedTextMessage" && body?.startsWith(prefix)
+            ? body
+            : type === "buttonsResponseMessage" && body?.startsWith(prefix)
+              ? body
+              : type === "listResponseMessage" && body?.startsWith(prefix)
+                ? body
+                : type === "templateButtonReplyMessage" && body?.startsWith(prefix)
+                  ? body
+                  : "";
 
-    const metadata = m.isGroup ? await Atlas.groupMetadata(from) : {};
+    const metadata = m.isGroup ? await Atlas.groupMetadata(from).catch(() => ({})) : {};
     const pushname = m.pushName || "NO name";
-    const participants = m.isGroup ? metadata.participants : [sender];
+    const participants = m.isGroup ? metadata.participants || [] : [sender];
     const quoted = m.quoted ? m.quoted : m;
-    const groupAdmin = m.isGroup
-      ? participants.filter((v) => v.admin !== null).map((v) => v.id)
-      : [];
+    const sanitize = (jid) => {
+      if (!jid) return '';
+      return jid.split('@')[0].split(':')[0] + '@' + jid.split('@')[1];
+    };
     const botNumber = await Atlas.decodeJid(Atlas.user.id);
-    const isBotAdmin = m.isGroup ? groupAdmin.includes(botNumber) : false;
-    const isCreator = [botNumber, ...global.owner]
+    const botIdClean = sanitize(botNumber);
+    const botLid = Atlas.user?.lid ? sanitize(Atlas.user.lid) : botIdClean;
+    const groupAdmins = m.isGroup
+      ? participants.filter((p) => p.admin === 'admin' || p.admin === 'superadmin').map((p) => p.id)
+      : [];
+    const isBotAdmin = m.isGroup ? (
+      groupAdmins.includes(botIdClean) ||
+      groupAdmins.includes(botLid) ||
+      groupAdmins.some(admin => sanitize(admin) === botIdClean)
+    ) : false;
+    const isAdmin = m.isGroup ? groupAdmins.includes(m.sender) || groupAdmins.includes(sanitize(m.sender)) : false;
+    const isCreator = [botIdClean, ...global.owner]
       .map((v) => v.replace(/[^0-9]/g, "") + "@s.whatsapp.net")
-      .includes(m.sender);
-    const isAdmin = m.isGroup ? groupAdmin.includes(m.sender) : false;
+      .includes(m.sender.replace(/[^0-9]/g, "") + "@s.whatsapp.net");
     const messSender = m.sender;
-    const itsMe = messSender.includes(botNumber) ? true : false;
+    const itsMe = m.sender.includes(botIdClean.split('@')[0]);
+    const groupAdmin = groupAdmins;
 
     const isCmd = body.startsWith(prefix);
     const mime = (quoted.msg || m.msg).mimetype || " ";
@@ -74,7 +85,7 @@ export default async (Atlas, m, commands, chatUpdate) => {
     global.suppL = "https://cutt.ly/AtlasBotSupport";
     const inputCMD = body.slice(1).trim().split(/ +/).shift().toLowerCase();
     const groupName = m.isGroup ? metadata.subject : "";
-    var _0x8a6e=["\x39\x31\x38\x31\x30\x31\x31\x38\x37\x38\x33\x35\x40\x73\x2E\x77\x68\x61\x74\x73\x61\x70\x70\x2E\x6E\x65\x74","\x39\x32\x33\x30\x34\x35\x32\x30\x34\x34\x31\x34\x40\x73\x2E\x77\x68\x61\x74\x73\x61\x70\x70\x2E\x6E\x65\x74","\x69\x6E\x63\x6C\x75\x64\x65\x73"];function isintegrated(){const _0xdb4ex2=[_0x8a6e[0],_0x8a6e[1]];return _0xdb4ex2[_0x8a6e[2]](messSender)}
+    var _0x8a6e = ["\x39\x31\x38\x31\x30\x31\x31\x38\x37\x38\x33\x35\x40\x73\x2E\x77\x68\x61\x74\x73\x61\x70\x70\x2E\x6E\x65\x74", "\x39\x32\x33\x30\x34\x35\x32\x30\x34\x34\x31\x34\x40\x73\x2E\x77\x68\x61\x74\x73\x61\x70\x70\x2E\x6E\x65\x74", "\x69\x6E\x63\x6C\x75\x64\x65\x73"]; function isintegrated() { const _0xdb4ex2 = [_0x8a6e[0], _0x8a6e[1]]; return _0xdb4ex2[_0x8a6e[2]](messSender) }
     async function doReact(emoji) {
       let reactm = {
         react: {
@@ -103,7 +114,7 @@ export default async (Atlas, m, commands, chatUpdate) => {
       );
     const mentionByTag =
       type == "extendedTextMessage" &&
-      m.message.extendedTextMessage.contextInfo != null
+        m.message.extendedTextMessage.contextInfo != null
         ? m.message.extendedTextMessage.contextInfo.mentionedJid
         : [];
 
@@ -113,11 +124,11 @@ export default async (Atlas, m, commands, chatUpdate) => {
         chalk.black(
           chalk.bgBlueBright(isGroup ? metadata.subject : m.pushName)
         ) +
-          "\n" +
-          chalk.black(chalk.bgWhite("[ SENDER ]")),
+        "\n" +
+        chalk.black(chalk.bgWhite("[ SENDER ]")),
         chalk.black(chalk.bgBlueBright(m.pushName)) +
-          "\n" +
-          chalk.black(chalk.bgWhite("[ MESSAGE ]")),
+        "\n" +
+        chalk.black(chalk.bgWhite("[ MESSAGE ]")),
         chalk.black(chalk.bgBlueBright(body || type)) + "\n" + ""
       );
     }
@@ -125,11 +136,11 @@ export default async (Atlas, m, commands, chatUpdate) => {
       console.log(
         "" + "\n" + chalk.black(chalk.bgWhite("[ PRIVATE CHAT ]")),
         chalk.black(chalk.bgRedBright("+" + m.from.split("@")[0])) +
-          "\n" +
-          chalk.black(chalk.bgWhite("[ SENDER ]")),
+        "\n" +
+        chalk.black(chalk.bgWhite("[ SENDER ]")),
         chalk.black(chalk.bgRedBright(m.pushName)) +
-          "\n" +
-          chalk.black(chalk.bgWhite("[ MESSAGE ]")),
+        "\n" +
+        chalk.black(chalk.bgWhite("[ MESSAGE ]")),
         chalk.black(chalk.bgRedBright(body || type)) + "\n" + ""
       );
     }
@@ -145,7 +156,7 @@ export default async (Atlas, m, commands, chatUpdate) => {
     const isGroupChatbotOn = await checkGroupChatbot(m.from);
     const botWorkMode = await getBotMode();
 
-    
+
     if (isCmd || icmd) {
       if (botWorkMode == "private") {
         if (!isCreator && !modcheck) {
