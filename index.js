@@ -25,19 +25,72 @@ import { dirname } from "path";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Write PID so it can always be found/killed
 fs.writeFileSync(path.join(__dirname, "atlas.pid"), process.pid.toString());
 
-// Suppress noisy Baileys internal Signal protocol logs that write directly to console
+// Map of noise prefixes → clean replacement line printed to stdout once per event
+const _BAILEYS_NOISE_MAP = {
+  "Failed to decrypt message with any known session":
+    "[ ATLAS ] Signal: failed to decrypt (session key mismatch — skipped)",
+  "Session error:": "[ ATLAS ] Signal: session error (Bad MAC — skipped)",
+  "Closing open session in favor of incoming prekey bundle":
+    "[ ATLAS ] Signal: rotating session (new prekey bundle received)",
+  "Closing session:": null, // suppress entirely — too verbose (raw key dump)
+  "Opening session:": null,
+};
+
+const _matchNoise = (str) => {
+  for (const [prefix, replacement] of Object.entries(_BAILEYS_NOISE_MAP)) {
+    if (str.startsWith(prefix)) return { matched: true, replacement };
+  }
+  return { matched: false };
+};
+
+// Patch console.log (stdout)
 const _origLog = console.log;
 console.log = (...args) => {
   const first = String(args[0] ?? "");
-  if (
-    first.startsWith("Closing session:") ||
-    first.startsWith("Opening session:")
-  )
+  const { matched, replacement } = _matchNoise(first);
+  if (matched) {
+    if (replacement) _origLog(replacement);
     return;
+  }
   _origLog(...args);
+};
+
+// Patch console.error (stderr) — libsignal uses this path
+const _origErr = console.error;
+console.error = (...args) => {
+  const first = String(args[0] ?? "");
+  const { matched, replacement } = _matchNoise(first);
+  if (matched) {
+    if (replacement) _origLog(replacement); // route clean msg to stdout
+    return;
+  }
+  _origErr(...args);
+};
+
+// Patch console.info — libsignal uses console.info("Closing session:", session)
+const _origInfo = console.info;
+console.info = (...args) => {
+  const first = String(args[0] ?? "");
+  const { matched, replacement } = _matchNoise(first);
+  if (matched) {
+    if (replacement) _origLog(replacement);
+    return;
+  }
+  _origInfo(...args);
+};
+
+// Patch process.stderr.write — final fallback used by some internal Node streams
+const _origStderrWrite = process.stderr.write.bind(process.stderr);
+process.stderr.write = (chunk, ...rest) => {
+  const str = typeof chunk === "string" ? chunk : chunk.toString();
+  const { matched, replacement } = _matchNoise(str.trimStart());
+  if (matched) {
+    if (replacement) _origLog(replacement);
+    return true;
+  }
+  return _origStderrWrite(chunk, ...rest);
 };
 
 import express from "express";
@@ -55,19 +108,16 @@ import chalk from "chalk";
 
 app.use(express.json());
 
-// Global LID ↔ phone JID map — populated from contacts events at connect time.
-// Core.js uses this to resolve m.sender LIDs to phone JIDs for owner/mod checks.
 global.lidToJidMap = new Map();
 
-// Minimal in-memory store — makeInMemoryStore was removed in Baileys v7
 const store = {
   contacts: {},
   messages: {},
   bind(ev) {
+    let _lidLogTimer = null;
     ev.on("contacts.upsert", (contacts) => {
       for (const contact of contacts) {
         store.contacts[contact.id] = contact;
-        // Build bidirectional LID ↔ phone JID map from all available fields
         const phoneJid = contact.id?.endsWith("@s.whatsapp.net")
           ? contact.id
           : null;
@@ -81,9 +131,14 @@ const store = {
           global.lidToJidMap.set(phoneJid, lidJid);
         }
       }
-      console.log(
-        `[ ATLAS ] LID map populated: ${global.lidToJidMap.size} entries`,
-      );
+      // Debounce: print one summary line after the batch settles
+      clearTimeout(_lidLogTimer);
+      _lidLogTimer = setTimeout(() => {
+        if (global.lidToJidMap.size > 0)
+          _origLog(
+            `[ ATLAS ] LID map ready: ${global.lidToJidMap.size / 2} contact(s) mapped`,
+          );
+      }, 300);
     });
     ev.on("contacts.update", (updates) => {
       for (const update of updates) {
@@ -221,7 +276,20 @@ const startAtlas = async () => {
             const folderName = "Plugins";
             const fileName = path.basename(pluginUrl);
             const filePath = path.join(folderName, fileName);
-            fs.writeFileSync(filePath, body);
+            let pluginBody = body;
+
+            if (
+              pluginBody.includes("alias:") &&
+              !pluginBody.includes("uniquecommands:")
+            ) {
+              pluginBody = pluginBody.replace(
+                /alias:\s*(\[[\s\S]*?\]),/,
+                (match, aliasPart) =>
+                  `${match}\n  uniquecommands: ${aliasPart},`,
+              );
+            }
+
+            fs.writeFileSync(filePath, pluginBody);
             console.log(chalk.green(`[ ATLAS ] ✓ ${fileName}`));
           } else {
             console.log(

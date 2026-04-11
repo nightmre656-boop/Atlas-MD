@@ -218,12 +218,25 @@ export default {
               const subCommands = await readUniqueCommands(filePath);
               allCommands.push(...subCommands);
             } else if (stat.isFile() && file.endsWith(".js")) {
-              const command = await import(pathToFileURL(filePath).href);
-              const cmdDefault = command.default;
+              try {
+                const command = await import(pathToFileURL(filePath).href);
+                const cmdDefault = command.default;
 
-              if (cmdDefault && Array.isArray(cmdDefault.uniquecommands)) {
-                const subArray = [file, ...cmdDefault.uniquecommands];
-                allCommands.push(subArray);
+                if (cmdDefault && Array.isArray(cmdDefault.uniquecommands)) {
+                  // Preferred: explicit uniquecommands list
+                  const subArray = [file, ...cmdDefault.uniquecommands];
+                  allCommands.push(subArray);
+                } else if (
+                  cmdDefault &&
+                  Array.isArray(cmdDefault.alias) &&
+                  cmdDefault.alias.length
+                ) {
+                  // Fallback: use alias list when uniquecommands not defined
+                  const subArray = [file, ...cmdDefault.alias];
+                  allCommands.push(subArray);
+                }
+              } catch (e) {
+                // Skip broken plugins silently — don't let one bad import kill -h
               }
             }
           }
@@ -247,6 +260,9 @@ export default {
           others: { icon: "✨", label: "ᴏᴛʜᴇʀꜱ" },
           plugin: { icon: "🔌", label: "ᴘʟᴜɢɪɴ" },
           "code-runner": { icon: "💻", label: "ᴄᴏᴅᴇ ʀᴜɴɴᴇʀ" },
+          "logo-maker": { icon: "🎨", label: "ʟᴏɢᴏ ᴍᴀᴋᴇʀ" },
+          logo: { icon: "🖼️", label: "ʟᴏɢᴏ ꜱᴛʏʟᴇꜱ" },
+          systemcommands: { icon: "⚙️", label: "ꜱʏꜱᴛᴇᴍ" },
         };
 
         function formatCommands(allCommands) {
