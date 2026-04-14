@@ -11,7 +11,6 @@ import MongoAuth from "./System/MongoAuth/MongoAuth.js";
 import fs from "fs";
 import figlet from "figlet";
 import pino from "pino";
-import path from "path";
 import { Boom } from "@hapi/boom";
 import { serialize } from "./System/whatsapp.js";
 import { smsg } from "./System/Function2.js";
@@ -29,12 +28,10 @@ import { getPluginURLs } from "./System/MongoDB/MongoDb_Core.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
 const app = express();
-const PORT = global.port || 8080;
+const PORT = process.env.PORT || 8080;
 commands.prefix = global.prefa;
 
-// Global variables for Railway status
 let QR_GENERATE = "invalid";
 let status = "initializing";
 let AtlasSocket = null;
@@ -73,14 +70,13 @@ const startAtlas = async () => {
 
   const Atlas = makeWASocket({
     logger: pino({ level: "silent" }),
-    printQRInTerminal: false,
     auth: state,
     version,
     browser: ["Ubuntu", "Chrome", "20.0.04"],
+    printQRInTerminal: false
   });
 
-  // --- CRITICAL FIX START ---
-  // We define this BEFORE we bind events or the store
+  // Attach decoder immediately
   Atlas.decodeJid = (jid) => {
     if (!jid) return jid;
     if (/:\d+@/gi.test(jid)) {
@@ -88,12 +84,12 @@ const startAtlas = async () => {
       return (decode.user && decode.server && decode.user + "@" + decode.server) || jid;
     } else return jid;
   };
-  // --- CRITICAL FIX END ---
 
   AtlasSocket = Atlas;
   store.bind(Atlas.ev);
-  
-  // Register plugins
+
+  // Install and Read Commands
+  await installPlugin();
   await readcommands();
 
   Atlas.ev.on("creds.update", saveCreds);
@@ -102,18 +98,13 @@ const startAtlas = async () => {
   Atlas.ev.on("connection.update", async (update) => {
     const { lastDisconnect, connection, qr } = update;
     if (connection) status = connection;
-
     if (qr) {
       QR_GENERATE = qr;
       qrcodeTerminal.generate(qr, { small: true });
     }
-
     if (connection === "close") {
       let reason = new Boom(lastDisconnect?.error)?.output.statusCode;
-      if (reason === DisconnectReason.loggedOut) {
-        await clearState();
-        console.log("Logged out, please rescanned.");
-      }
+      if (reason === DisconnectReason.loggedOut) await clearState();
       startAtlas();
     }
     if (connection === "open") console.log(chalk.green("[ ATLAS ] Connected Successfully!"));
@@ -122,19 +113,28 @@ const startAtlas = async () => {
   Atlas.ev.on("messages.upsert", async (chatUpdate) => {
     if (chatUpdate.type !== "notify") return;
     const msg = chatUpdate.messages[0];
-    if (!msg.message) return;
-    
-    // Additional check to ensure decodeJid is ready
-    if (typeof Atlas.decodeJid !== 'function') return;
-
+    if (!msg.message || !Atlas.decodeJid) return;
     const m = serialize(Atlas, msg);
     core(Atlas, m, commands, chatUpdate);
   });
+
+  async function installPlugin() {
+    console.log(chalk.cyan(`[ ATLAS ] Checking plugins...`));
+    try {
+      let plugins = await getPluginURLs();
+      for (const url of plugins) {
+        const name = url.split('/').pop();
+        const { body } = await got(url);
+        fs.writeFileSync(join(__dirname, "Plugins", name), body);
+      }
+    } catch (e) {
+      console.log(chalk.red("[ ATLAS ] Plugin install error: " + e.message));
+    }
+  }
 };
 
 startAtlas();
 
-// Railway API Endpoints
 app.get("/api/status", (req, res) => res.json({ status }));
 app.get("/api/qr", async (req, res) => {
   if (status === "open") return res.json({ status: "connected" });
@@ -142,4 +142,4 @@ app.get("/api/qr", async (req, res) => {
   const qrDataUrl = await qrcode.toDataURL(QR_GENERATE);
   res.json({ status: "qr", qr: qrDataUrl });
 });
-app.listen(PORT);
+app.listen(PORT, () => console.log(`[ SERVER ] Running on port ${PORT}`));
