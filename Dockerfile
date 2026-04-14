@@ -1,21 +1,34 @@
-FROM node:24.11.1-alpine AS deps
-RUN apk upgrade --no-cache && \
-    apk add --no-cache python3 make g++ gcc
+FROM node:20-bullseye AS deps
+
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    build-essential \
+    libc6-dev \
+    libvips-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY package.json ./
-RUN npm i --omit=dev
+RUN npm install --omit=dev --legacy-peer-deps
 
-FROM node:24.11.1-alpine
-RUN apk upgrade --no-cache && \
-    apk add --no-cache ffmpeg imagemagick python3 curl unzip && \
-    npm install -g pm2 && \
-    curl -fsSL https://bun.sh/install | bash && \
-    ln -s /root/.bun/bin/bun /usr/local/bin/bun && \
-    apk del curl unzip && \
-    rm -rf /root/.bun/install/cache /root/.npm/_cacache
-ENV PATH="/root/.bun/bin:$PATH"
+FROM node:20-bullseye
+
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    imagemagick \
+    python3 \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-EXPOSE 10000
-CMD ["pm2-runtime", "ecosystem.config.cjs"]
+
+RUN mkdir -p System/Cache
+
+EXPOSE 8080
+
+CMD ["node", "--max-old-space-size=512", "index.js"]
