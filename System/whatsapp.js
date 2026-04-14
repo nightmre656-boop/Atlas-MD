@@ -1,4 +1,16 @@
-import { extensionForMediaMessage, extractMessageContent, jidNormalizedUser, getContentType, normalizeMessageContent, proto, delay, downloadContentFromMessage, getBinaryNodeChild } from "@whiskeysockets/baileys";
+import pkg from "@whiskeysockets/baileys";
+const { 
+  extensionForMediaMessage, 
+  extractMessageContent, 
+  jidNormalizedUser, 
+  getContentType, 
+  normalizeMessageContent, 
+  proto, 
+  delay, 
+  downloadContentFromMessage, 
+  getBinaryNodeChild 
+} = pkg;
+
 import fs from "fs";
 import { fileTypeFromBuffer } from "file-type";
 import { getRandom, fetchBuffer } from "./Function.js";
