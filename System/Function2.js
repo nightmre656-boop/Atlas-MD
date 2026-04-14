@@ -1,4 +1,5 @@
-import { proto, delay, getContentType } from "@whiskeysockets/baileys";
+import pkg from "@whiskeysockets/baileys";
+const { proto, delay, getContentType } = pkg;
 import chalk from "chalk";
 import fs from "fs";
 const { unlink } = fs.promises;
@@ -392,5 +393,3 @@ export const smsg = (conn, m, store) => {
 
   return m;
 };
-
-// Hot reload unsupported natively in ESM
