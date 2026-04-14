@@ -5,120 +5,82 @@ import {
   makeWASocket,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  downloadContentFromMessage,
-  downloadMediaMessage,
   jidDecode,
 } from "@whiskeysockets/baileys";
 import MongoAuth from "./System/MongoAuth/MongoAuth.js";
 import fs from "fs";
 import figlet from "figlet";
-import { join } from "path";
-import got from "got";
 import pino from "pino";
 import path from "path";
-import { fileTypeFromBuffer } from "file-type";
 import { Boom } from "@hapi/boom";
-import { serialize, WAConnection } from "./System/whatsapp.js";
-import { smsg, getBuffer, getSizeMedia } from "./System/Function2.js";
+import { serialize } from "./System/whatsapp.js";
+import { smsg } from "./System/Function2.js";
 import { fileURLToPath } from "url";
-import { dirname } from "path";
+import { dirname, join } from "path";
+import got from "got";
+import express from "express";
+import qrcode from "qrcode";
+import qrcodeTerminal from "qrcode-terminal";
+import mongoose from "mongoose";
+import chalk from "chalk";
+import { readcommands, commands } from "./System/ReadCommands.js";
+import core from "./Core.js";
+import { getPluginURLs } from "./System/MongoDB/MongoDb_Core.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-fs.writeFileSync(path.join(__dirname, "atlas.pid"), process.pid.toString());
-
-// Log Noise Filter
-const _BAILEYS_NOISE_MAP = {
-  "Failed to decrypt message": "[ ATLAS ] Signal: decryption failed (skipped)",
-  "Session error:": "[ ATLAS ] Signal: session error (Bad MAC)",
-  "Closing open session": "[ ATLAS ] Signal: rotating session",
-  "Closing session:": null,
-  "Opening session:": null,
-};
-
-const _matchNoise = (str) => {
-  for (const [prefix, replacement] of Object.entries(_BAILEYS_NOISE_MAP)) {
-    if (str.startsWith(prefix)) return { matched: true, replacement };
-  }
-  return { matched: false };
-};
-
-const _origLog = console.log;
-console.log = (...args) => {
-  const first = String(args[0] ?? "");
-  const { matched, replacement } = _matchNoise(first);
-  if (matched) { if (replacement) _origLog(replacement); return; }
-  _origLog(...args);
-};
-
-import express from "express";
 const app = express();
-const PORT = global.port;
-import welcomeLeft from "./System/Welcome.js";
-import { readcommands, commands } from "./System/ReadCommands.js";
-import core from "./Core.js";
+const PORT = global.port || 8080;
 commands.prefix = global.prefa;
-import mongoose from "mongoose";
-import qrcode from "qrcode";
-import qrcodeTerminal from "qrcode-terminal";
-import { getPluginURLs, checkAntidelete, checkMod } from "./System/MongoDB/MongoDb_Core.js";
-import chalk from "chalk";
 
-app.use(express.json());
-global.lidToJidMap = new Map();
+// Global variables for Railway status
+let QR_GENERATE = "invalid";
+let status = "initializing";
+let AtlasSocket = null;
 
 const store = {
   contacts: {},
   messages: {},
   bind(ev) {
     ev.on("contacts.upsert", (contacts) => {
-      for (const contact of contacts) {
-        store.contacts[contact.id] = contact;
-      }
+      for (const contact of contacts) store.contacts[contact.id] = contact;
     });
     ev.on("messages.upsert", ({ messages }) => {
       for (const msg of messages) {
-        if (!msg.key?.remoteJid || !msg.key?.id) continue;
+        if (!msg.key?.remoteJid) continue;
         const jid = msg.key.remoteJid;
         if (!store.messages[jid]) store.messages[jid] = {};
         store.messages[jid][msg.key.id] = msg;
       }
     });
   },
-  loadMessage: async (jid, id) => store.messages[jid]?.[id],
 };
-
-let QR_GENERATE = "invalid";
-let status = "initializing";
-let AtlasSocket = null;
-let mongoAuth;
 
 const startAtlas = async () => {
   try {
     await mongoose.connect(mongodb);
     console.log(chalk.green(`[ ATLAS ] MongoDB connected ✓`));
   } catch (err) {
-    console.error(chalk.redBright(`[ EXCEPTION ] MongoDB error: ${err.message}`));
+    console.error(chalk.red(`[ ERROR ] MongoDB: ${err.message}`));
   }
 
-  mongoAuth = new MongoAuth(sessionId);
+  const mongoAuth = new MongoAuth(sessionId);
   const { state, saveCreds, clearState } = await mongoAuth.init();
-  
-  console.log(figlet.textSync("ATLAS", { font: "Standard", width: 70 }));
-
-  await installPlugin();
   const { version } = await fetchLatestBaileysVersion();
+
+  console.log(figlet.textSync("ATLAS-MD", { font: "Small" }));
 
   const Atlas = makeWASocket({
     logger: pino({ level: "silent" }),
-    browser: ["Ubuntu", "Chrome", "20.0.04"],
+    printQRInTerminal: false,
     auth: state,
     version,
-    keepAliveIntervalMs: 25_000,
+    browser: ["Ubuntu", "Chrome", "20.0.04"],
   });
 
-  // FIXED: Define decodeJid BEFORE store.bind or events trigger
+  // --- CRITICAL FIX START ---
+  // We define this BEFORE we bind events or the store
   Atlas.decodeJid = (jid) => {
     if (!jid) return jid;
     if (/:\d+@/gi.test(jid)) {
@@ -126,26 +88,12 @@ const startAtlas = async () => {
       return (decode.user && decode.server && decode.user + "@" + decode.server) || jid;
     } else return jid;
   };
+  // --- CRITICAL FIX END ---
 
-  AtlasSocket = Atlas; 
+  AtlasSocket = Atlas;
   store.bind(Atlas.ev);
-  Atlas.public = true;
-
-  async function installPlugin() {
-    console.log(chalk.cyan(`[ ATLAS ] Checking plugins...`));
-    let plugins = [];
-    try { plugins = await getPluginURLs(); } catch (err) {}
-    for (const pluginUrl of plugins) {
-      try {
-        const { body, statusCode } = await got(pluginUrl);
-        if (statusCode == 200) {
-          const fileName = path.basename(pluginUrl);
-          fs.writeFileSync(path.join("Plugins", fileName), body);
-        }
-      } catch (e) {}
-    }
-  }
-
+  
+  // Register plugins
   await readcommands();
 
   Atlas.ev.on("creds.update", saveCreds);
@@ -153,44 +101,45 @@ const startAtlas = async () => {
 
   Atlas.ev.on("connection.update", async (update) => {
     const { lastDisconnect, connection, qr } = update;
-    if (connection) {
-      status = connection;
-      console.info(`[ ATLAS ] Server Status => ${connection}`);
+    if (connection) status = connection;
+
+    if (qr) {
+      QR_GENERATE = qr;
+      qrcodeTerminal.generate(qr, { small: true });
     }
 
     if (connection === "close") {
       let reason = new Boom(lastDisconnect?.error)?.output.statusCode;
-      if (reason === DisconnectReason.loggedOut || reason === DisconnectReason.badSession) {
+      if (reason === DisconnectReason.loggedOut) {
         await clearState();
+        console.log("Logged out, please rescanned.");
       }
       startAtlas();
     }
-    if (qr) {
-      QR_GENERATE = qr;
-      status = "qr";
-      qrcodeTerminal.generate(qr, { small: true });
-    }
+    if (connection === "open") console.log(chalk.green("[ ATLAS ] Connected Successfully!"));
   });
 
   Atlas.ev.on("messages.upsert", async (chatUpdate) => {
     if (chatUpdate.type !== "notify") return;
-    const msg = chatUpdate.messages?.[0];
-    if (!msg || !msg.message) return;
+    const msg = chatUpdate.messages[0];
+    if (!msg.message) return;
+    
+    // Additional check to ensure decodeJid is ready
+    if (typeof Atlas.decodeJid !== 'function') return;
+
     const m = serialize(Atlas, msg);
-    if (m.key?.remoteJid === "status@broadcast") return;
     core(Atlas, m, commands, chatUpdate);
   });
 };
 
 startAtlas();
 
-app.use("/", express.static(join(__dirname, "Frontend")));
+// Railway API Endpoints
 app.get("/api/status", (req, res) => res.json({ status }));
 app.get("/api/qr", async (req, res) => {
   if (status === "open") return res.json({ status: "connected" });
-  if (!QR_GENERATE || QR_GENERATE === "invalid") return res.json({ status: "waiting" });
+  if (QR_GENERATE === "invalid") return res.json({ status: "loading" });
   const qrDataUrl = await qrcode.toDataURL(QR_GENERATE);
   res.json({ status: "qr", qr: qrDataUrl });
 });
-
-app.listen(PORT, () => console.log(`[ ATLAS ] GUI Server port ${PORT}`));
+app.listen(PORT);
