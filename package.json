@@ -1,15 +1,4 @@
-{
-  "name": "atlas",
-  "version": "4.0.0",
-  "description": "The future of WhatsApp bots with plugin support.",
-  "type": "module",
-  "main": "index.js",
-  "scripts": {
-    "start": "node --max-old-space-size=8000 --expose-gc index.js"
-  },
-  "author": "FantoX",
-  "license": "MIT",
-  "dependencies": {
+"dependencies": {
     "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
     "axios": "^1.14.0",
@@ -30,4 +19,3 @@
     "youtube-yts": "^1.1.0",
     "yt-search": "^2.10.0"
   }
-}
