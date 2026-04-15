@@ -18,11 +18,15 @@ export const serialize = (Atlas, m) => {
     m.type = getContentType(m.message);
     m.message = extractMessageContent(m.message);
     m.msg = m.message[m.type];
-    m.body = m.message?.conversation || m.msg?.text || m.msg?.caption || "";
+    m.body = m.message?.conversation || m.msg?.text || m.msg?.caption || m.message?.extendedTextMessage?.text || "";
     m.prefix = global.prefa || "!";
+    m.pushName = m.pushName || "User";
   }
 
-  m.reply = (text) => Atlas.sendMessage(m.from, { text }, { quoted: m });
+  // ✅ Stable Reply Shortcut
+  m.reply = async (text) => {
+    return Atlas.sendMessage(m.from, { text: text }, { quoted: m });
+  };
   
   return m;
 };
