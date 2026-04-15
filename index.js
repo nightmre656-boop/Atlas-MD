@@ -30,7 +30,7 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// --- GLOBAL SETTINGS ---
+// Force worktype to public globally
 global.worktype = "public"; 
 commands.prefix = global.prefa;
 
@@ -47,7 +47,7 @@ global.decodeJid = (jid) => {
     return jid;
 };
 
-// --- STORE FIX: SAFE MESSAGE HANDLING ---
+// --- ROBUST STORE: Prevents 'set' of undefined error ---
 const store = {
     contacts: {},
     messages: {},
@@ -56,10 +56,11 @@ const store = {
             for (const contact of contacts) store.contacts[contact.id] = contact;
         });
         ev.on("messages.upsert", ({ messages }) => {
+            if (!store.messages) store.messages = {};
             const m = messages[0];
-            if (!m.message) return;
+            if (!m || !m.message) return;
             const jid = m.key.remoteJid;
-            if (!store.messages) store.messages = {}; 
+            if (!jid) return;
             if (!store.messages[jid]) store.messages[jid] = [];
             store.messages[jid].push(m);
         });
@@ -94,15 +95,13 @@ const startAtlas = async () => {
     Atlas.decodeJid = global.decodeJid;
     store.bind(Atlas.ev);
 
-    // --- CORE ATTACHMENTS ---
+    // Patch utility functions
     Atlas.setStatus = async (st) => {
         try { return await Atlas.updateProfileStatus(st); } catch { return await Atlas.sendPresenceUpdate(st); }
     };
-
     Atlas.sendText = async (jid, text, quoted = '', options) => {
         return Atlas.sendMessage(jid, { text: text, ...options }, { quoted });
     };
-
     Atlas.downloadMediaMessage = async (m) => {
         return await downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }) });
     };
@@ -129,30 +128,21 @@ const startAtlas = async () => {
 
         const m = serialize(Atlas, msg);
         
-        // --- THE DANTE MASTER CHECK (LID & JID SUPPORT) ---
-        const isDante = m.sender.includes("59945378676903") || m.sender.includes("2348133453645") || msg.key.fromMe;
+        // --- DANTE OWNER VERIFICATION ---
+        const isDante = m.sender.includes("59945378676903") || 
+                        m.sender.includes("2348133453645") || 
+                        msg.key.fromMe;
         
         if (isDante) {
-            global.worktype = "public"; // Force unlock
-            console.log(chalk.green(`[ COMMAND ] Executing: ${m.body}`));
+            global.worktype = "public"; 
+            console.log(chalk.green(`[ EXEC ] Command: ${m.body}`));
             core(Atlas, m, commands, chatUpdate);
         }
     });
 };
 
-// --- WEB INTERFACE ---
-app.get("/", (req, res) => {
-    res.send(`<html><body style="background:#000;color:white;text-align:center;padding-top:100px;font-family:sans-serif;"><h1>Atlas-MD Dante</h1><div id="q"></div><script>async function u(){const r=await fetch('/api/qr');const d=await r.json();const q=document.getElementById('q');if(d.status==='qr')q.innerHTML='<img src="'+d.qr+'" style="background:white;padding:10px;"/>';else if(d.status==='connected')q.innerHTML='<h1 style="color:lime">ONLINE ✓</h1>';}setInterval(u,5000);u();</script></body></html>`);
-});
-
-app.get("/api/qr", async (req, res) => {
-    if (status === "open") return res.json({ status: "connected" });
-    if (QR_GENERATE === "invalid") return res.json({ status: "loading" });
-    res.json({ status: "qr", qr: await qrcode.toDataURL(QR_GENERATE) });
-});
-
 const bootstrap = async () => {
-    app.listen(PORT, () => console.log(chalk.yellow(`[ PORT ] Listening on ${PORT}`)));
+    app.listen(PORT, () => console.log(chalk.yellow(`[ SERVER ] Port ${PORT}`)));
     console.log(figlet.textSync("DANTE", { font: "Small" }));
     try { await mongoose.connect(mongodb); } catch (e) {}
     await installPlugin();
@@ -161,3 +151,13 @@ const bootstrap = async () => {
 };
 
 bootstrap();
+
+// --- WEB QR DASHBOARD ---
+app.get("/", (req, res) => {
+    res.send(`<html><body style="background:#000;color:white;text-align:center;padding-top:100px;font-family:sans-serif;"><h1>Atlas-MD Dante</h1><div id="q"></div><script>async function u(){const r=await fetch('/api/qr');const d=await r.json();const q=document.getElementById('q');if(d.status==='qr')q.innerHTML='<img src="'+d.qr+'" style="background:white;padding:10px;"/>';else if(d.status==='connected')q.innerHTML='<h1 style="color:lime">ONLINE ✓</h1>';}setInterval(u,5000);u();</script></body></html>`);
+});
+app.get("/api/qr", async (req, res) => {
+    if (status === "open") return res.json({ status: "connected" });
+    if (QR_GENERATE === "invalid") return res.json({ status: "loading" });
+    res.json({ status: "qr", qr: await qrcode.toDataURL(QR_GENERATE) });
+});
