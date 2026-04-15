@@ -6,7 +6,7 @@ import {
   DisconnectReason,
   fetchLatestBaileysVersion,
   jidDecode,
-  downloadMediaMessage, // <-- Added this
+  downloadMediaMessage,
 } from "@whiskeysockets/baileys";
 import fs from "fs";
 import figlet from "figlet";
@@ -35,6 +35,7 @@ let QR_GENERATE = "invalid";
 let status = "initializing";
 const mongodb = global.mongodb;
 
+// --- GLOBAL JID DECODER ---
 global.decodeJid = (jid) => {
     if (!jid) return jid;
     if (/:\d+@/gi.test(jid)) {
@@ -82,12 +83,11 @@ const startAtlas = async () => {
         printQRInTerminal: true,
     });
 
-    // --- POLYFILLS & MEDIA FIXES ---
+    // --- CRITICAL POLYFILLS ---
     Atlas.decodeJid = global.decodeJid;
     if (!store.messages) store.messages = {}; 
     store.bind(Atlas.ev);
 
-    // FIX: Add downloadMediaMessage to the socket
     Atlas.downloadMediaMessage = async (message) => {
         return await downloadMediaMessage(message, 'buffer', {}, { 
             logger: pino({ level: 'silent' }),
@@ -125,8 +125,17 @@ const startAtlas = async () => {
     Atlas.ev.on("messages.upsert", async (chatUpdate) => {
         if (chatUpdate.type !== "notify") return;
         const msg = chatUpdate.messages[0];
-        if (!msg.message) return;
+        if (!msg.message || msg.key.fromMe) return;
+
         const m = serialize(Atlas, msg);
+        
+        // --- THE DANTE PROTECTOR ---
+        // Checks if the sender is Dante (the owner)
+        const isOwner = global.owner.some(num => m.sender.includes(num.trim()));
+        
+        // Only Dante can use commands in groups or private
+        if (!isOwner) return;
+
         core(Atlas, m, commands, chatUpdate);
     });
 };
@@ -137,8 +146,8 @@ app.get("/", (req, res) => {
         <!DOCTYPE html>
         <html>
         <head><title>Atlas Dashboard</title><style>body{background:#0f172a;color:white;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;}.card{background:#1e293b;padding:2.5rem;border-radius:1.5rem;box-shadow:0 15px 35px rgba(0,0,0,0.4);border:1px solid #334155;}img{background:white;padding:12px;border-radius:12px;margin:25px 0;width:250px;}.status{font-weight:bold;color:#38bdf8;text-transform:uppercase;}</style></head>
-        <body><div class="card"><h1>Atlas-MD</h1><div id="qr-container">Loading...</div><p>Status: <span id="stat" class="status">Connecting...</span></p></div>
-        <script>async function update(){try{const r=await fetch('/api/qr');const d=await r.json();const c=document.getElementById('qr-container');const s=document.getElementById('stat');if(d.status==='qr'){c.innerHTML='<img src="'+d.qr+'" />';s.innerText='Scan Now';}else if(d.status==='connected'){c.innerHTML='<h1>✅</h1>';s.innerText='Online';}}catch(e){}}setInterval(update,5000);update();</script>
+        <body><div class="card"><h1>Atlas-MD</h1><div id="qr-container">Loading QR...</div><p>Status: <span id="stat" class="status">Connecting...</span></p></div>
+        <script>async function update(){try{const r=await fetch('/api/qr');const d=await r.json();const c=document.getElementById('qr-container');const s=document.getElementById('stat');if(d.status==='qr'){c.innerHTML='<img src="'+d.qr+'" />';s.innerText='Scan for Dante';}else if(d.status==='connected'){c.innerHTML='<h1>✅</h1>';s.innerText='Online';}}catch(e){}}setInterval(update,5000);update();</script>
         </body></html>
     `);
 });
@@ -152,8 +161,12 @@ app.get("/api/qr", async (req, res) => {
 
 const bootstrap = async () => {
     console.log(figlet.textSync("ATLAS-MD", { font: "Small" }));
-    try { await mongoose.connect(mongodb); console.log(chalk.green(`[ ATLAS ] MongoDB connected ✓`)); } 
-    catch (err) { console.error(chalk.red(`[ ERROR ] MongoDB: ${err.message}`)); }
+    try { 
+        await mongoose.connect(mongodb); 
+        console.log(chalk.green(`[ ATLAS ] MongoDB connected ✓`)); 
+    } catch (err) { 
+        console.error(chalk.red(`[ ERROR ] MongoDB: ${err.message}`)); 
+    }
     await installPlugin();
     await readcommands();
     await startAtlas();
