@@ -28,6 +28,7 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// ✅ Global Worktype Set to Public
 global.worktype = "public";
 commands.prefix = global.prefa;
 
@@ -72,6 +73,7 @@ const startAtlas = async () => {
       status = "closed";
       QR_GENERATE = null;
       if (statusCode !== DisconnectReason.loggedOut) {
+        console.log(chalk.yellow("[ RECONNECTING ]..."));
         startAtlas();
       } else {
         await clearState();
@@ -89,6 +91,7 @@ const startAtlas = async () => {
       const m = serialize(Atlas, msg);
       if (!m) return;
 
+      // ✅ Send to Core for processing
       core(Atlas, m, commands, chatUpdate);
     } catch (err) {
       console.log(chalk.red("[ MSG ERROR ] " + err.message));
@@ -96,16 +99,16 @@ const startAtlas = async () => {
   });
 };
 
-// --- ENHANCED WEB UI ---
+// --- QR INTERFACE ---
 app.get("/", (req, res) => {
   res.send(`
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
-      <meta charset="UTF-8"><title>DANTE | Interface</title>
+      <title>DANTE | Deployment</title>
       <style>
         body { background: #0d1117; color: #58a6ff; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .container { text-align: center; border: 1px solid #30363d; padding: 40px; border-radius: 12px; background: #161b22; }
+        .container { text-align: center; border: 1px solid #30363d; padding: 40px; border-radius: 12px; background: #161b22; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         #qr-box { background: white; padding: 15px; border-radius: 8px; margin: 20px auto; min-width: 200px; min-height: 200px; display: flex; align-items: center; justify-content: center; }
         .loader { border: 4px solid #21262d; border-top: 4px solid #238636; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -113,23 +116,27 @@ app.get("/", (req, res) => {
     </head>
     <body>
       <div class="container">
-        <h1>DANTE-MD</h1>
+        <h1>DANTE-MD CORE</h1>
         <div id="qr-box"><div class="loader"></div></div>
-        <p id="stText">BOOTING...</p>
+        <p id="stText" style="font-weight:bold;">INITIALIZING SYSTEM...</p>
       </div>
       <script>
         async function poll() {
-          const r = await fetch('/api/qr');
-          const d = await r.json();
-          const qb = document.getElementById('qr-box');
-          const st = document.getElementById('stText');
-          if (d.status === 'qr') {
-            st.innerText = 'SCAN TO CONNECT';
-            qb.innerHTML = '<img src="' + d.qr + '">';
-          } else if (d.status === 'connected') {
-            st.innerText = '✔ ONLINE';
-            qb.innerHTML = '<h2 style="color:#238636">CONNECTED</h2>';
-          }
+          try {
+            const r = await fetch('/api/qr');
+            const d = await r.json();
+            const qb = document.getElementById('qr-box');
+            const st = document.getElementById('stText');
+            if (d.status === 'qr') {
+              st.innerText = 'WAITING FOR SCAN';
+              st.style.color = '#e3b341';
+              qb.innerHTML = '<img src="' + d.qr + '" style="display:block;">';
+            } else if (d.status === 'connected') {
+              st.innerText = 'CONNECTION STABLISHED';
+              st.style.color = '#238636';
+              qb.innerHTML = '<h1 style="color:#238636;font-size:4rem;">✔</h1>';
+            }
+          } catch(e) {}
         }
         setInterval(poll, 3000); poll();
       </script>
@@ -141,13 +148,26 @@ app.get("/", (req, res) => {
 app.get("/api/qr", async (req, res) => {
   if (status === "open") return res.json({ status: "connected" });
   if (!QR_GENERATE) return res.json({ status: "loading" });
-  try { res.json({ status: "qr", qr: await qrcode.toDataURL(QR_GENERATE) }); } catch { res.json({ status: "error" }); }
+  try { 
+    res.json({ status: "qr", qr: await qrcode.toDataURL(QR_GENERATE) }); 
+  } catch { 
+    res.json({ status: "error" }); 
+  }
 });
 
 const bootstrap = async () => {
-  app.listen(PORT, "0.0.0.0", () => console.log(chalk.cyan(\`[ SERVER ] Port \${PORT}\`)));
-  await mongoose.connect(mongodb);
-  await readcommands();
-  await startAtlas();
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(chalk.cyan(`[ SERVER ] Running on port ${PORT}`));
+  });
+
+  try {
+    await mongoose.connect(mongodb);
+    console.log(chalk.green("[ DB ] MongoDB Connected ✓"));
+    await readcommands();
+    await startAtlas();
+  } catch (e) {
+    console.error(chalk.red("[ CRITICAL ERROR ]"), e);
+  }
 };
+
 bootstrap();
