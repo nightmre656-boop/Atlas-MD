@@ -6,6 +6,7 @@ import {
   DisconnectReason,
   fetchLatestBaileysVersion,
   jidDecode,
+  downloadMediaMessage, // <-- Added this
 } from "@whiskeysockets/baileys";
 import fs from "fs";
 import figlet from "figlet";
@@ -34,7 +35,6 @@ let QR_GENERATE = "invalid";
 let status = "initializing";
 const mongodb = global.mongodb;
 
-// --- GLOBAL JID DECODER ---
 global.decodeJid = (jid) => {
     if (!jid) return jid;
     if (/:\d+@/gi.test(jid)) {
@@ -82,17 +82,23 @@ const startAtlas = async () => {
         printQRInTerminal: true,
     });
 
-    // --- CRITICAL POLYFILLS & FIXES ---
+    // --- POLYFILLS & MEDIA FIXES ---
     Atlas.decodeJid = global.decodeJid;
     if (!store.messages) store.messages = {}; 
     store.bind(Atlas.ev);
 
-    // Fix for "Atlas.sendText is not a function"
+    // FIX: Add downloadMediaMessage to the socket
+    Atlas.downloadMediaMessage = async (message) => {
+        return await downloadMediaMessage(message, 'buffer', {}, { 
+            logger: pino({ level: 'silent' }),
+            reuploadRequest: Atlas.updateMediaMessage 
+        });
+    };
+
     Atlas.sendText = async (jid, text, quoted = '', options) => {
         return Atlas.sendMessage(jid, { text: text, ...options }, { quoted });
     };
 
-    // Fix for "Atlas.setStatus is not a function"
     Atlas.setStatus = async (statusText) => {
         try {
             const types = ['unavailable', 'available', 'composing', 'recording', 'paused'];
