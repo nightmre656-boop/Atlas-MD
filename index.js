@@ -6,7 +6,6 @@ import {
   DisconnectReason,
   fetchLatestBaileysVersion,
   jidDecode,
-  useMultiFileAuthState,
 } from "@whiskeysockets/baileys";
 import fs from "fs";
 import figlet from "figlet";
@@ -34,9 +33,9 @@ commands.prefix = global.prefa;
 // Global Variables
 let QR_GENERATE = "invalid";
 let status = "initializing";
-const mongodb = process.env.MONGODB_URI || process.env.MONGO_URL || process.env.MONGODB_URL;
+const mongodb = process.env.MONGODB_URI;
 
-// --- CRITICAL: GLOBAL JID DECODER (Prevents Core.js crashes) ---
+// --- CRITICAL: GLOBAL JID DECODER ---
 global.decodeJid = (jid) => {
     if (!jid) return jid;
     if (/:\d+@/gi.test(jid)) {
@@ -86,9 +85,22 @@ const startAtlas = async () => {
         printQRInTerminal: true,
     });
 
-    // Attach decoder to socket
+    // Attach polyfills & store
     Atlas.decodeJid = global.decodeJid;
     store.bind(Atlas.ev);
+
+    // --- POLYFILL FOR setStatus ERROR ---
+    Atlas.setStatus = async (statusText) => {
+        try {
+            const presenceTypes = ['unavailable', 'available', 'composing', 'recording', 'paused'];
+            if (presenceTypes.includes(statusText)) {
+                return await Atlas.sendPresenceUpdate(statusText);
+            }
+            return await Atlas.updateProfileStatus(statusText);
+        } catch (err) {
+            console.error("[ ATLAS ] setStatus polyfill error:", err.message);
+        }
+    };
 
     Atlas.ev.on("creds.update", saveCreds);
     Atlas.serializeM = (m) => smsg(Atlas, m, store);
@@ -96,10 +108,7 @@ const startAtlas = async () => {
     Atlas.ev.on("connection.update", async (update) => {
         const { lastDisconnect, connection, qr } = update;
         if (connection) status = connection;
-
-        if (qr) {
-            QR_GENERATE = qr;
-        }
+        if (qr) QR_GENERATE = qr;
 
         if (connection === "open") {
             console.log(chalk.green("[ ATLAS ] Connected Successfully! ✓"));
@@ -107,10 +116,12 @@ const startAtlas = async () => {
 
         if (connection === "close") {
             const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-            if (statusCode === DisconnectReason.loggedOut) {
+            if (statusCode !== DisconnectReason.loggedOut) {
+                startAtlas();
+            } else {
                 await clearState();
+                startAtlas();
             }
-            startAtlas();
         }
     });
 
@@ -133,9 +144,10 @@ app.get("/", (req, res) => {
             <title>Atlas Dashboard</title>
             <style>
                 body { background: #0f172a; color: white; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
-                .card { background: #1e293b; padding: 2rem; border-radius: 1rem; box-shadow: 0 10px 20px rgba(0,0,0,0.5); border: 1px solid #334155; }
-                img { background: white; padding: 10px; border-radius: 10px; margin: 20px 0; width: 250px; }
-                .status { font-weight: bold; color: #38bdf8; }
+                .card { background: #1e293b; padding: 2.5rem; border-radius: 1.5rem; box-shadow: 0 15px 35px rgba(0,0,0,0.4); border: 1px solid #334155; max-width: 400px; }
+                img { background: white; padding: 12px; border-radius: 12px; margin: 25px 0; width: 250px; }
+                .status { font-weight: bold; color: #38bdf8; text-transform: uppercase; letter-spacing: 1px; }
+                h1 { margin: 0; color: #f8fafc; }
             </style>
         </head>
         <body>
@@ -146,17 +158,19 @@ app.get("/", (req, res) => {
             </div>
             <script>
                 async function update() {
-                    const r = await fetch('/api/qr');
-                    const d = await r.json();
-                    const c = document.getElementById('qr-container');
-                    const s = document.getElementById('stat');
-                    if(d.status === 'qr') {
-                        c.innerHTML = '<img src="'+d.qr+'" />';
-                        s.innerText = 'Scan me with WhatsApp';
-                    } else if(d.status === 'connected') {
-                        c.innerHTML = '<h1 style="font-size:4rem">✅</h1>';
-                        s.innerText = 'Bot is Online!';
-                    }
+                    try {
+                        const r = await fetch('/api/qr');
+                        const d = await r.json();
+                        const c = document.getElementById('qr-container');
+                        const s = document.getElementById('stat');
+                        if(d.status === 'qr') {
+                            c.innerHTML = '<img src="'+d.qr+'" />';
+                            s.innerText = 'Scan with WhatsApp';
+                        } else if(d.status === 'connected') {
+                            c.innerHTML = '<h1 style="font-size:5rem">✅</h1>';
+                            s.innerText = 'Bot is Online!';
+                        }
+                    } catch(e) {}
                 }
                 setInterval(update, 5000); update();
             </script>
@@ -175,11 +189,15 @@ app.get("/api/qr", async (req, res) => {
 // --- BOOTSTRAP ---
 const bootstrap = async () => {
     console.log(figlet.textSync("ATLAS-MD", { font: "Small" }));
+    if (!mongodb) {
+        console.error(chalk.red("[ ERROR ] MONGODB_URI is missing in Railway Variables!"));
+        process.exit(1);
+    }
     try {
-        await mongoose.connect(mongodb, { useNewUrlParser: true, useUnifiedTopology: true });
+        await mongoose.connect(mongodb);
         console.log(chalk.green(`[ ATLAS ] MongoDB connected ✓`));
     } catch (err) {
-        console.error(chalk.red(`[ ERROR ] MongoDB SSL/Network: ${err.message}`));
+        console.error(chalk.red(`[ ERROR ] MongoDB Connection: ${err.message}`));
     }
     await installPlugin();
     await readcommands();
