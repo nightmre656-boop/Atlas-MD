@@ -12,7 +12,6 @@ import figlet from "figlet";
 import pino from "pino";
 import { Boom } from "@hapi/boom";
 import { serialize } from "./System/whatsapp.js";
-import { smsg } from "./System/Function2.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import got from "got";
@@ -29,13 +28,10 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// ✅ Set to Public
 global.worktype = "public";
 commands.prefix = global.prefa;
 
-const OWNER_NUMBERS = ["59945378676903", "2348133453645"];
-
-let QR_GENERATE = "invalid";
+let QR_GENERATE = null;
 let status = "initializing";
 const mongodb = global.mongodb;
 
@@ -51,23 +47,30 @@ const startAtlas = async () => {
     version,
     browser: ["Ubuntu", "Chrome", "20.0.04"],
     printQRInTerminal: false,
-    getMessage: async (key) => {
-      return { conversation: "" };
-    },
+    getMessage: async (key) => ({ conversation: "" }),
   });
 
   Atlas.ev.on("creds.update", saveCreds);
 
   Atlas.ev.on("connection.update", async (update) => {
     const { lastDisconnect, connection, qr } = update;
-    if (connection) status = connection;
-    if (qr) QR_GENERATE = qr;
-    
+
+    if (qr) {
+      QR_GENERATE = qr;
+      status = "qr";
+      console.log(chalk.yellow("[ QR ] New QR Generated. Waiting for scan..."));
+    }
+
     if (connection === "open") {
+      status = "open";
+      QR_GENERATE = null;
       console.log(chalk.green("[ STATUS ] Dante is Online (PUBLIC MODE) ✓"));
     }
+
     if (connection === "close") {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
+      status = "closed";
+      QR_GENERATE = null;
       if (statusCode !== DisconnectReason.loggedOut) {
         startAtlas();
       } else {
@@ -86,31 +89,65 @@ const startAtlas = async () => {
       const m = serialize(Atlas, msg);
       if (!m) return;
 
-      // ✅ PUBLIC LOGIC: We no longer return if !isOwner
-      // The Core.js will handle specific permission checks for commands
       core(Atlas, m, commands, chatUpdate);
-
     } catch (err) {
       console.log(chalk.red("[ MSG ERROR ] " + err.message));
     }
   });
 };
 
-// Web UI Logic
+// --- ENHANCED WEB UI ---
 app.get("/", (req, res) => {
-  res.send(`<html><body style="background:#000;color:#0f0;text-align:center;font-family:monospace;"><h1>ATLAS-MD PUBLIC</h1><div id="qr"></div><script>async function update(){const r=await fetch('/api/qr');const d=await r.json();if(d.status==='qr')document.getElementById('qr').innerHTML='<img src="'+d.qr+'" style="background:white;padding:10px;"/>';if(d.status==='connected')document.getElementById('qr').innerHTML='<h2>ONLINE</h2>';}setInterval(update,5000);update();</script></body></html>`);
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8"><title>DANTE | Interface</title>
+      <style>
+        body { background: #0d1117; color: #58a6ff; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .container { text-align: center; border: 1px solid #30363d; padding: 40px; border-radius: 12px; background: #161b22; }
+        #qr-box { background: white; padding: 15px; border-radius: 8px; margin: 20px auto; min-width: 200px; min-height: 200px; display: flex; align-items: center; justify-content: center; }
+        .loader { border: 4px solid #21262d; border-top: 4px solid #238636; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>DANTE-MD</h1>
+        <div id="qr-box"><div class="loader"></div></div>
+        <p id="stText">BOOTING...</p>
+      </div>
+      <script>
+        async function poll() {
+          const r = await fetch('/api/qr');
+          const d = await r.json();
+          const qb = document.getElementById('qr-box');
+          const st = document.getElementById('stText');
+          if (d.status === 'qr') {
+            st.innerText = 'SCAN TO CONNECT';
+            qb.innerHTML = '<img src="' + d.qr + '">';
+          } else if (d.status === 'connected') {
+            st.innerText = '✔ ONLINE';
+            qb.innerHTML = '<h2 style="color:#238636">CONNECTED</h2>';
+          }
+        }
+        setInterval(poll, 3000); poll();
+      </script>
+    </body>
+    </html>
+  `);
 });
 
 app.get("/api/qr", async (req, res) => {
   if (status === "open") return res.json({ status: "connected" });
-  try { res.json({ status: "qr", qr: await qrcode.toDataURL(QR_GENERATE) }); } catch { res.json({ status: "loading" }); }
+  if (!QR_GENERATE) return res.json({ status: "loading" });
+  try { res.json({ status: "qr", qr: await qrcode.toDataURL(QR_GENERATE) }); } catch { res.json({ status: "error" }); }
 });
 
 const bootstrap = async () => {
-  app.listen(PORT, "0.0.0.0");
+  app.listen(PORT, "0.0.0.0", () => console.log(chalk.cyan(\`[ SERVER ] Port \${PORT}\`)));
   await mongoose.connect(mongodb);
   await readcommands();
   await startAtlas();
 };
-
 bootstrap();
