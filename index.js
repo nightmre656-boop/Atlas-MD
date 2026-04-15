@@ -29,6 +29,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 8080;
+
+// --- FORCE PUBLIC MODE NATIVELY ---
+global.worktype = "public"; 
 commands.prefix = global.prefa;
 
 let QR_GENERATE = "invalid";
@@ -62,7 +65,6 @@ const store = {
 };
 
 async function installPlugin() {
-    console.log(chalk.cyan(`[ ATLAS ] Checking plugins...`));
     try {
         const plugins = await getPluginURLs();
         for (const url of plugins) {
@@ -70,7 +72,7 @@ async function installPlugin() {
             const { body } = await got(url);
             fs.writeFileSync(join(__dirname, "Plugins", name), body);
         }
-    } catch (e) { console.log(chalk.red("[ ATLAS ] Plugin error: " + e.message)); }
+    } catch (e) { console.log(chalk.red("[ ERROR ] Plugins: " + e.message)); }
 }
 
 const startAtlas = async () => {
@@ -87,27 +89,20 @@ const startAtlas = async () => {
         printQRInTerminal: true,
     });
 
-    // --- CRITICAL ATTACHMENTS ---
     Atlas.decodeJid = global.decodeJid;
     store.bind(Atlas.ev);
 
-    Atlas.setStatus = async (statusText) => {
-        try {
-            const presenceTypes = ['unavailable', 'available', 'composing', 'recording', 'paused'];
-            if (presenceTypes.includes(statusText)) return await Atlas.sendPresenceUpdate(statusText);
-            return await Atlas.updateProfileStatus(statusText);
-        } catch (err) { console.error("setStatus error:", err.message); }
+    // --- PATCH: Remove limitations on these functions ---
+    Atlas.setStatus = async (st) => {
+        try { return await Atlas.updateProfileStatus(st); } catch { return await Atlas.sendPresenceUpdate(st); }
     };
 
     Atlas.sendText = async (jid, text, quoted = '', options) => {
         return Atlas.sendMessage(jid, { text: text, ...options }, { quoted });
     };
 
-    Atlas.downloadMediaMessage = async (message) => {
-        return await downloadMediaMessage(message, 'buffer', {}, { 
-            logger: pino({ level: 'silent' }),
-            reuploadRequest: Atlas.updateMediaMessage 
-        });
+    Atlas.downloadMediaMessage = async (m) => {
+        return await downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }) });
     };
 
     Atlas.ev.on("creds.update", saveCreds);
@@ -117,7 +112,7 @@ const startAtlas = async () => {
         const { lastDisconnect, connection, qr } = update;
         if (connection) status = connection;
         if (qr) QR_GENERATE = qr;
-        if (connection === "open") console.log(chalk.green("[ ATLAS ] Connected! ✓"));
+        if (connection === "open") console.log(chalk.green("[ STATUS ] Dante is Online ✓"));
         if (connection === "close") {
             const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
             if (statusCode !== DisconnectReason.loggedOut) startAtlas();
@@ -128,33 +123,30 @@ const startAtlas = async () => {
     Atlas.ev.on("messages.upsert", async (chatUpdate) => {
         if (chatUpdate.type !== "notify") return;
         const msg = chatUpdate.messages[0];
-        
-        // Safety: Ignore empty or protocol messages (edits/deletes)
         if (!msg.message || msg.message.protocolMessage) return;
 
         const m = serialize(Atlas, msg);
         
-        // --- THE DANTE MASTER OVERRIDE ---
-        const isFromMe = msg.key.fromMe;
-        const ownerNumber = "2348133453645"; 
-        const isOwner = m.sender.includes(ownerNumber) || isFromMe;
+        // --- THE "DANTE ALWAYS ALLOWED" LOGIC ---
+        // We use your ID directly from the logs (LID or JID)
+        const isDante = m.sender.includes("59945378676903") || m.sender.includes("2348133453645") || msg.key.fromMe;
         
-        // Debugging Log - See this in your Railway Console
-        if (m.isGroup) {
-            console.log(chalk.blue(`[ GROUP DETECTED ] From: ${m.sender} | Command: ${m.body}`));
-        }
-
-        // Only allow Dante to trigger the bot
-        if (isOwner) {
-            global.worktype = "public"; // Force it to process even in groups
+        if (isDante) {
+            // Force settings to 'Public' every time Dante speaks
+            global.worktype = "public";
+            
+            // Log for your peace of mind
+            console.log(chalk.green(`[ COMMAND ] Executing for Dante: ${m.body}`));
+            
+            // Push to core
             core(Atlas, m, commands, chatUpdate);
         }
     });
 };
 
-// --- WEB DASHBOARD ---
+// --- MINIMAL DASHBOARD ---
 app.get("/", (req, res) => {
-    res.send(`<html><body style="background:#0f172a;color:white;text-align:center;font-family:sans-serif;padding-top:100px;"><h1>Atlas-MD Dante</h1><div id="q">Loading QR...</div><script>async function u(){const r=await fetch('/api/qr');const d=await r.json();const q=document.getElementById('q');if(d.status==='qr')q.innerHTML='<img src="'+d.qr+'" style="background:white;padding:10px;border-radius:10px;"/>';else if(d.status==='connected')q.innerHTML='<h1 style="color:#22c55e">✅ ONLINE</h1>';}setInterval(u,5000);u();</script></body></html>`);
+    res.send(`<html><body style="background:#111;color:white;text-align:center;padding-top:50px;font-family:sans-serif;"><h1>Atlas-MD Dante</h1><div id="q"></div><script>async function u(){const r=await fetch('/api/qr');const d=await r.json();const q=document.getElementById('q');if(d.status==='qr')q.innerHTML='<img src="'+d.qr+'" style="background:white;padding:10px;"/>';else if(d.status==='connected')q.innerHTML='<h1 style="color:lime">ONLINE</h1>';}setInterval(u,5000);u();</script></body></html>`);
 });
 
 app.get("/api/qr", async (req, res) => {
@@ -164,7 +156,7 @@ app.get("/api/qr", async (req, res) => {
 });
 
 const bootstrap = async () => {
-    console.log(figlet.textSync("ATLAS-MD", { font: "Small" }));
+    console.log(figlet.textSync("DANTE-BOT", { font: "Small" }));
     try { await mongoose.connect(mongodb); } catch (e) {}
     await installPlugin();
     await readcommands();
