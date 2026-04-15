@@ -30,7 +30,7 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// --- FORCE PUBLIC MODE NATIVELY ---
+// --- GLOBAL SETTINGS ---
 global.worktype = "public"; 
 commands.prefix = global.prefa;
 
@@ -47,6 +47,7 @@ global.decodeJid = (jid) => {
     return jid;
 };
 
+// --- STORE FIX: SAFE MESSAGE HANDLING ---
 const store = {
     contacts: {},
     messages: {},
@@ -58,6 +59,7 @@ const store = {
             const m = messages[0];
             if (!m.message) return;
             const jid = m.key.remoteJid;
+            if (!store.messages) store.messages = {}; 
             if (!store.messages[jid]) store.messages[jid] = [];
             store.messages[jid].push(m);
         });
@@ -72,7 +74,7 @@ async function installPlugin() {
             const { body } = await got(url);
             fs.writeFileSync(join(__dirname, "Plugins", name), body);
         }
-    } catch (e) { console.log(chalk.red("[ ERROR ] Plugins: " + e.message)); }
+    } catch (e) { console.log(chalk.red("[ PLUGIN ERROR ] " + e.message)); }
 }
 
 const startAtlas = async () => {
@@ -92,7 +94,7 @@ const startAtlas = async () => {
     Atlas.decodeJid = global.decodeJid;
     store.bind(Atlas.ev);
 
-    // --- PATCH: Remove limitations on these functions ---
+    // --- CORE ATTACHMENTS ---
     Atlas.setStatus = async (st) => {
         try { return await Atlas.updateProfileStatus(st); } catch { return await Atlas.sendPresenceUpdate(st); }
     };
@@ -127,26 +129,20 @@ const startAtlas = async () => {
 
         const m = serialize(Atlas, msg);
         
-        // --- THE "DANTE ALWAYS ALLOWED" LOGIC ---
-        // We use your ID directly from the logs (LID or JID)
+        // --- THE DANTE MASTER CHECK (LID & JID SUPPORT) ---
         const isDante = m.sender.includes("59945378676903") || m.sender.includes("2348133453645") || msg.key.fromMe;
         
         if (isDante) {
-            // Force settings to 'Public' every time Dante speaks
-            global.worktype = "public";
-            
-            // Log for your peace of mind
-            console.log(chalk.green(`[ COMMAND ] Executing for Dante: ${m.body}`));
-            
-            // Push to core
+            global.worktype = "public"; // Force unlock
+            console.log(chalk.green(`[ COMMAND ] Executing: ${m.body}`));
             core(Atlas, m, commands, chatUpdate);
         }
     });
 };
 
-// --- MINIMAL DASHBOARD ---
+// --- WEB INTERFACE ---
 app.get("/", (req, res) => {
-    res.send(`<html><body style="background:#111;color:white;text-align:center;padding-top:50px;font-family:sans-serif;"><h1>Atlas-MD Dante</h1><div id="q"></div><script>async function u(){const r=await fetch('/api/qr');const d=await r.json();const q=document.getElementById('q');if(d.status==='qr')q.innerHTML='<img src="'+d.qr+'" style="background:white;padding:10px;"/>';else if(d.status==='connected')q.innerHTML='<h1 style="color:lime">ONLINE</h1>';}setInterval(u,5000);u();</script></body></html>`);
+    res.send(`<html><body style="background:#000;color:white;text-align:center;padding-top:100px;font-family:sans-serif;"><h1>Atlas-MD Dante</h1><div id="q"></div><script>async function u(){const r=await fetch('/api/qr');const d=await r.json();const q=document.getElementById('q');if(d.status==='qr')q.innerHTML='<img src="'+d.qr+'" style="background:white;padding:10px;"/>';else if(d.status==='connected')q.innerHTML='<h1 style="color:lime">ONLINE ✓</h1>';}setInterval(u,5000);u();</script></body></html>`);
 });
 
 app.get("/api/qr", async (req, res) => {
@@ -156,7 +152,8 @@ app.get("/api/qr", async (req, res) => {
 });
 
 const bootstrap = async () => {
-    console.log(figlet.textSync("DANTE-BOT", { font: "Small" }));
+    app.listen(PORT, () => console.log(chalk.yellow(`[ PORT ] Listening on ${PORT}`)));
+    console.log(figlet.textSync("DANTE", { font: "Small" }));
     try { await mongoose.connect(mongodb); } catch (e) {}
     await installPlugin();
     await readcommands();
@@ -164,4 +161,3 @@ const bootstrap = async () => {
 };
 
 bootstrap();
-app.listen(PORT);
