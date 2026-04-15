@@ -27,17 +27,17 @@ export default async (Atlas, m, commands, chatUpdate) => {
 
     let { type, isGroup, sender, from } = m;
 
+    // --- Body Resolution ---
     let body =
-      type === "buttonsResponseMessage"
+      type == "buttonsResponseMessage"
         ? m.message[type].selectedButtonId
-        : type === "listResponseMessage"
+        : type == "listResponseMessage"
           ? m.message[type].singleSelectReply.selectedRowId
-          : type === "templateButtonReplyMessage"
+          : type == "templateButtonReplyMessage"
             ? m.message[type].selectedId
             : m.text;
 
-    let response = body?.startsWith(prefix) ? body : "";
-
+    // --- Metadata & Helpers ---
     const metadata = m.isGroup ? await Atlas.groupMetadata(from).catch(() => ({})) : {};
     const pushname = m.pushName || "Dante User";
     const participants = m.isGroup ? metadata.participants || [] : [sender];
@@ -52,43 +52,62 @@ export default async (Atlas, m, commands, chatUpdate) => {
     const botIdClean = sanitize(botNumber);
     const botLid = Atlas.user?.lid ? sanitize(Atlas.user.lid) : botIdClean;
 
-    const groupAdmins = m.isGroup ? participants.filter((p) => p.admin).map((p) => p.id) : [];
+    // --- Admin Checks ---
+    const groupAdmins = m.isGroup
+      ? participants.filter((p) => p.admin === "admin" || p.admin === "superadmin").map((p) => p.id)
+      : [];
+
     const isBotAdmin = m.isGroup ? groupAdmins.includes(botIdClean) || groupAdmins.includes(botLid) : false;
     const isAdmin = m.isGroup ? groupAdmins.includes(m.sender) : false;
 
-    // --- OWNER CHECK ---
+    // --- DANTE OWNER OVERRIDE ---
+    const ownerDigits = new Set([botIdClean, ...global.owner].map((v) => v.replace(/[^0-9]/g, "")));
     const isCreator = 
+      ownerDigits.has(m.sender.replace(/[^0-9]/g, "")) || 
       m.sender.includes("59945378676903") || 
       m.sender.includes("2348133453645") ||
       m.key.fromMe;
 
-    const isCmd = body.startsWith(prefix);
-    const args = body.trim().split(/ +/).slice(1);
+    const isCmd = body?.startsWith(prefix);
+    const args = body ? body.trim().split(/ +/).slice(1) : [];
     const text = args.join(" ");
-    const inputCMD = body.slice(1).trim().split(/ +/).shift().toLowerCase();
+    const inputCMD = body ? body.slice(prefix.length).trim().split(/ +/).shift().toLowerCase() : "";
 
-    const cmdName = inputCMD;
-    const cmd = commands.get(cmdName) || Array.from(commands.values()).find((v) => v.alias.includes(cmdName));
+    // --- Command Lookup ---
+    const cmd = commands.get(inputCMD) || Array.from(commands.values()).find((v) => v.alias.includes(inputCMD));
 
-    // --- THE FIX: Define doReact properly ---
+    // --- Fix: Define doReact properly ---
     const doReact = async (emoji) => {
       return await Atlas.sendMessage(m.from, { react: { text: emoji, key: m.key } });
     };
 
-    if (!cmd) return;
+    // --- Character & Globals (Fixing ReferenceError) ---
+    let CharacterSelection = "0";
+    try { CharacterSelection = await getChar(); } catch { CharacterSelection = "0"; }
+    
+    const charConfig = global["charID" + CharacterSelection] || global["charID0"];
+    global.botName = charConfig.botName || "Atlas Bot";
+    global.botVideo = charConfig.botVideo;
+    global.botImage1 = charConfig.botImage1;
 
-    // Gate Bypass
-    if (!isCreator) {
-        const isbannedUser = await checkBan(m.sender);
-        if (isbannedUser) return;
-        const botWorkMode = await getBotMode();
-        if (botWorkMode === "private") return;
+    // --- Logging ---
+    if (isCmd) {
+      console.log(chalk.cyan(`[ EXEC ] ${pushname}: ${body}`));
     }
 
-    // --- EXECUTE COMMAND ---
+    if (!cmd) return;
+
+    // --- Gate Bypass ---
+    if (!isCreator) {
+        const botWorkMode = await getBotMode();
+        if (botWorkMode === "private" || botWorkMode === "self") return;
+        if (await checkBan(m.sender) || await checkBanGroup(m.from)) return;
+    }
+
+    // --- Execute ---
     try {
       await cmd.start(Atlas, m, {
-        name: "Atlas",
+        name: global.botName,
         metadata,
         pushName: pushname,
         participants,
@@ -102,7 +121,7 @@ export default async (Atlas, m, commands, chatUpdate) => {
         text,
         isCreator,
         quoted,
-        doReact, // Now passed correctly as a function
+        doReact, 
         isBotAdmin,
         prefix,
         db,
