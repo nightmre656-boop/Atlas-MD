@@ -44,13 +44,17 @@ export default async (Atlas, m, commands, chatUpdate) => {
 
     const doReact = (emoji) => Atlas.sendMessage(from, { react: { text: emoji, key: m.key } });
 
-    console.log(chalk.cyan(`[ EXEC ] ${inputCMD} | Sender: ${senderNumber}`));
+    console.log(chalk.cyan(`[ EXEC ] ${inputCMD.toUpperCase()} | ${senderNumber}`));
 
     await cmd.start(Atlas, m, {
       args, text, prefix, isCreator, isAdmin, isBotAdmin, db, doReact, commands,
       pushName: m.pushName || "User",
       participants: isGroup ? (await Atlas.groupMetadata(from)).participants : []
-    }).catch(e => console.error(chalk.red(`[ CMD ERROR ] ${cmd.name}:`), e.message));
+    }).catch(e => {
+      console.error(chalk.red(`[ ERROR IN ${cmd.name} ]`), e.message);
+    });
 
-  } catch (e) { console.error(chalk.red("[ CORE ERROR ]"), e.message); }
+  } catch (e) {
+    console.error(chalk.red("[ CORE FATAL ERROR ]"), e.message);
+  }
 };
